@@ -1,10 +1,13 @@
 """Main CLI entry point."""
 
 import json
+import sys
 import click
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.panel import Panel
 
 from epub_recipe_parser.core import EPUBRecipeExtractor, ExtractorConfig
 from epub_recipe_parser.storage import RecipeDatabase
@@ -24,34 +27,90 @@ def cli():
 @click.argument("epub_file", type=click.Path(exists=True))
 @click.option("--output", "-o", default="recipes.db", help="Output database file")
 @click.option("--min-quality", "-q", default=20, help="Minimum quality score (0-100)")
-def extract(epub_file: str, output: str, min_quality: int):
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed extraction information")
+def extract(epub_file: str, output: str, min_quality: int, verbose: bool):
     """Extract recipes from an EPUB file."""
-    console.print(f"\n[bold]🔥 Extracting recipes from {epub_file}[/bold]\n")
+    try:
+        epub_path = Path(epub_file)
 
-    config = ExtractorConfig(min_quality_score=min_quality)
-    extractor = EPUBRecipeExtractor(config=config)
+        # Display header
+        console.print()
+        console.print(Panel.fit(
+            f"[bold cyan]Extracting Recipes[/bold cyan]\n"
+            f"File: {epub_path.name}\n"
+            f"Min Quality: {min_quality}",
+            border_style="cyan"
+        ))
+        console.print()
 
-    recipes = extractor.extract_from_epub(epub_file)
+        config = ExtractorConfig(min_quality_score=min_quality)
+        extractor = EPUBRecipeExtractor(config=config)
 
-    if not recipes:
-        console.print("[yellow]No recipes found![/yellow]")
-        return
+        # Extract with progress indicator
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Analyzing EPUB structure...", total=None)
+            recipes = extractor.extract_from_epub(epub_file)
+            progress.update(task, completed=True)
 
-    # Save to database
-    db = RecipeDatabase(output)
-    saved = db.save_recipes(recipes)
+        if not recipes:
+            console.print("[yellow]⚠️  No recipes found meeting quality threshold![/yellow]")
+            console.print(f"[dim]Try lowering --min-quality (current: {min_quality})[/dim]")
+            return
 
-    console.print(f"\n[green]✅ Extracted {len(recipes)} recipes[/green]")
-    console.print(f"[green]💾 Saved {saved} recipes to {output}[/green]")
+        # Save to database with progress
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task(f"Saving {len(recipes)} recipes to database...", total=None)
+            db = RecipeDatabase(output)
+            saved = db.save_recipes(recipes)
+            progress.update(task, completed=True)
 
-    # Show quality distribution
-    quality_scores = [r.quality_score for r in recipes]
-    avg_score = sum(quality_scores) / len(quality_scores)
-    excellent = len([s for s in quality_scores if s >= 70])
+        # Success summary
+        console.print()
+        console.print(f"[green]✅ Successfully extracted {len(recipes)} recipes[/green]")
+        console.print(f"[green]💾 Saved {saved} recipes to {output}[/green]")
 
-    console.print("\n[bold]📊 Quality Stats:[/bold]")
-    console.print(f"  Average score: {avg_score:.1f}")
-    console.print(f"  Excellent (70+): {excellent} ({excellent*100/len(recipes):.1f}%)")
+        # Show quality distribution
+        quality_scores = [r.quality_score for r in recipes]
+        avg_score = sum(quality_scores) / len(quality_scores)
+        excellent = len([s for s in quality_scores if s >= 70])
+        good = len([s for s in quality_scores if 50 <= s < 70])
+        fair = len([s for s in quality_scores if 30 <= s < 50])
+        poor = len([s for s in quality_scores if s < 30])
+
+        console.print()
+        console.print(Panel.fit(
+            f"[bold]Quality Distribution[/bold]\n\n"
+            f"Average Score: [cyan]{avg_score:.1f}/100[/cyan]\n\n"
+            f"[green]● Excellent (70+):[/green] {excellent} ({excellent*100/len(recipes):.1f}%)\n"
+            f"[blue]● Good (50-69):[/blue] {good} ({good*100/len(recipes):.1f}%)\n"
+            f"[yellow]● Fair (30-49):[/yellow] {fair} ({fair*100/len(recipes):.1f}%)\n"
+            f"[red]● Poor (<30):[/red] {poor} ({poor*100/len(recipes):.1f}%)",
+            border_style="green"
+        ))
+
+        # Show verbose details if requested
+        if verbose:
+            console.print("\n[bold]Top 5 Recipes:[/bold]")
+            top_recipes = sorted(recipes, key=lambda r: r.quality_score, reverse=True)[:5]
+            for i, recipe in enumerate(top_recipes, 1):
+                console.print(f"  {i}. {recipe.title} - [cyan]{recipe.quality_score}/100[/cyan]")
+
+    except FileNotFoundError:
+        console.print(f"[red]❌ Error: File not found: {epub_file}[/red]")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]❌ Error during extraction: {str(e)}[/red]")
+        if verbose:
+            console.print_exception()
+        sys.exit(1)
 
 
 @cli.command()
@@ -59,40 +118,155 @@ def extract(epub_file: str, output: str, min_quality: int):
 @click.option("--output", "-o", default="recipes.db", help="Output database file")
 @click.option("--min-quality", "-q", default=20, help="Minimum quality score (0-100)")
 @click.option("--pattern", "-p", default="*.epub", help="File pattern to match")
-def batch(directory: str, output: str, min_quality: int, pattern: str):
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed processing information")
+def batch(directory: str, output: str, min_quality: int, pattern: str, verbose: bool):
     """Batch process multiple EPUB files."""
-    dir_path = Path(directory)
-    epub_files = list(dir_path.glob(pattern))
+    try:
+        dir_path = Path(directory)
+        epub_files = list(dir_path.glob(pattern))
 
-    if not epub_files:
-        console.print(f"[yellow]No EPUB files found in {directory}[/yellow]")
-        return
+        if not epub_files:
+            console.print(f"[yellow]⚠️  No EPUB files found in {directory}[/yellow]")
+            console.print(f"[dim]Pattern: {pattern}[/dim]")
+            return
 
-    console.print(f"\n[bold]🔥 Batch processing {len(epub_files)} files[/bold]\n")
+        # Display batch header
+        console.print()
+        console.print(Panel.fit(
+            f"[bold cyan]Batch Processing[/bold cyan]\n"
+            f"Directory: {dir_path}\n"
+            f"Files: {len(epub_files)}\n"
+            f"Pattern: {pattern}\n"
+            f"Min Quality: {min_quality}",
+            border_style="cyan"
+        ))
+        console.print()
 
-    config = ExtractorConfig(min_quality_score=min_quality)
-    extractor = EPUBRecipeExtractor(config=config)
-    db = RecipeDatabase(output)
+        config = ExtractorConfig(min_quality_score=min_quality)
+        extractor = EPUBRecipeExtractor(config=config)
+        db = RecipeDatabase(output)
 
-    all_recipes = []
-    for epub_file in epub_files:
-        recipes = extractor.extract_from_epub(epub_file)
-        all_recipes.extend(recipes)
-        db.save_recipes(recipes)
+        all_recipes = []
+        failed_files = []
 
-    console.print(f"\n[green]✅ Total recipes extracted: {len(all_recipes)}[/green]")
-    console.print(f"[green]💾 Saved to {output}[/green]")
+        # Process files with progress bar
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task(
+                f"Processing {len(epub_files)} files...",
+                total=len(epub_files)
+            )
+
+            for epub_file in epub_files:
+                try:
+                    progress.update(
+                        task,
+                        description=f"Processing {epub_file.name}..."
+                    )
+
+                    recipes = extractor.extract_from_epub(str(epub_file))
+                    all_recipes.extend(recipes)
+                    db.save_recipes(recipes)
+
+                    if verbose:
+                        console.print(
+                            f"  [green]✓[/green] {epub_file.name}: {len(recipes)} recipes"
+                        )
+
+                except Exception as e:
+                    failed_files.append((epub_file.name, str(e)))
+                    if verbose:
+                        console.print(
+                            f"  [red]✗[/red] {epub_file.name}: {str(e)}"
+                        )
+
+                progress.advance(task)
+
+        # Summary
+        console.print()
+        console.print(f"[green]✅ Successfully processed {len(epub_files) - len(failed_files)}/{len(epub_files)} files[/green]")
+        console.print(f"[green]💾 Total recipes extracted: {len(all_recipes)}[/green]")
+        console.print(f"[green]📁 Saved to {output}[/green]")
+
+        if failed_files:
+            console.print(f"\n[yellow]⚠️  {len(failed_files)} files failed:[/yellow]")
+            for filename, error in failed_files[:5]:
+                console.print(f"  [red]•[/red] {filename}: {error[:60]}...")
+            if len(failed_files) > 5:
+                console.print(f"  [dim]... and {len(failed_files) - 5} more[/dim]")
+
+        # Show quality statistics
+        if all_recipes:
+            quality_scores = [r.quality_score for r in all_recipes]
+            avg_score = sum(quality_scores) / len(quality_scores)
+            excellent = len([s for s in quality_scores if s >= 70])
+
+            console.print()
+            console.print(Panel.fit(
+                f"[bold]Quality Summary[/bold]\n\n"
+                f"Average Score: [cyan]{avg_score:.1f}/100[/cyan]\n"
+                f"Excellent (70+): [green]{excellent}[/green] ({excellent*100/len(all_recipes):.1f}%)",
+                border_style="green"
+            ))
+
+    except Exception as e:
+        console.print(f"[red]❌ Error during batch processing: {str(e)}[/red]")
+        if verbose:
+            console.print_exception()
+        sys.exit(1)
 
 
 @cli.command()
 @click.argument("epub_file", type=click.Path(exists=True))
-def analyze(epub_file: str):
-    """Analyze EPUB structure."""
-    console.print(f"\n[bold]🔍 Analyzing {epub_file}[/bold]\n")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed analysis information")
+def analyze(epub_file: str, verbose: bool):
+    """Analyze EPUB structure and recipe patterns."""
+    try:
+        epub_path = Path(epub_file)
 
-    analyzer = EPUBStructureAnalyzer()
-    report = analyzer.analyze_structure(epub_file)
-    analyzer.print_report(report)
+        # Display header
+        console.print()
+        console.print(Panel.fit(
+            f"[bold cyan]Analyzing EPUB Structure[/bold cyan]\n"
+            f"File: {epub_path.name}",
+            border_style="cyan"
+        ))
+        console.print()
+
+        # Analyze with progress indicator
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Analyzing EPUB...", total=None)
+            analyzer = EPUBStructureAnalyzer()
+            report = analyzer.analyze_structure(epub_file)
+            progress.update(task, completed=True)
+
+        # Display results
+        console.print()
+        analyzer.print_report(report)
+
+        if verbose:
+            console.print("\n[bold]Analysis Tips:[/bold]")
+            console.print("  • Check header distribution to understand recipe boundaries")
+            console.print("  • Multiple h2/h3 headers typically indicate recipe sections")
+            console.print("  • Review pattern matches to verify extraction strategies")
+
+    except FileNotFoundError:
+        console.print(f"[red]❌ Error: File not found: {epub_file}[/red]")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]❌ Error during analysis: {str(e)}[/red]")
+        if verbose:
+            console.print_exception()
+        sys.exit(1)
 
 
 @cli.command()
@@ -256,33 +430,88 @@ def list_tags(database: str):
 )
 @click.option("--output", "-o", help="Output file path")
 @click.option("--min-quality", "-q", type=int, help="Minimum quality score filter")
-def export(database: str, format: str, output: str | None, min_quality: int | None):
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed export information")
+def export(database: str, format: str, output: str | None, min_quality: int | None, verbose: bool):
     """Export recipes from database to various formats."""
-    db = RecipeDatabase(database)
+    try:
+        db = RecipeDatabase(database)
 
-    # Query recipes with optional quality filter
-    if min_quality is not None:
-        recipes = db.query(min_quality=min_quality)
-    else:
-        recipes = db.query()
+        # Query recipes with progress indicator
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Loading recipes from database...", total=None)
+            if min_quality is not None:
+                recipes = db.query(min_quality=min_quality)
+            else:
+                recipes = db.query()
+            progress.update(task, completed=True)
 
-    if not recipes:
-        console.print("[yellow]No recipes found to export![/yellow]")
-        return
+        if not recipes:
+            console.print("[yellow]⚠️  No recipes found to export![/yellow]")
+            if min_quality is not None:
+                console.print(f"[dim]Try lowering --min-quality (current: {min_quality})[/dim]")
+            return
 
-    # Determine output file
-    if output is None:
-        output = f"recipes.{format}"
+        # Determine output file
+        if output is None:
+            output = f"recipes.{format}"
 
-    output_path = Path(output)
+        output_path = Path(output)
 
-    # Export based on format
-    if format == "json":
-        _export_json(recipes, output_path)
-    elif format == "markdown":
-        _export_markdown(recipes, output_path)
+        # Display export header
+        console.print()
+        console.print(Panel.fit(
+            f"[bold cyan]Exporting Recipes[/bold cyan]\n"
+            f"Format: {format.upper()}\n"
+            f"Recipes: {len(recipes)}\n"
+            f"Output: {output_path.name}",
+            border_style="cyan"
+        ))
+        console.print()
 
-    console.print(f"\n[green]✅ Exported {len(recipes)} recipes to {output}[/green]")
+        # Export with progress indicator
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task(f"Exporting to {format.upper()}...", total=None)
+
+            if format == "json":
+                _export_json(recipes, output_path)
+            elif format == "markdown":
+                _export_markdown(recipes, output_path)
+
+            progress.update(task, completed=True)
+
+        # Success message
+        file_size = output_path.stat().st_size
+        size_mb = file_size / (1024 * 1024)
+
+        console.print()
+        console.print(f"[green]✅ Successfully exported {len(recipes)} recipes[/green]")
+        console.print(f"[green]📄 Output: {output}[/green]")
+        console.print(f"[green]💾 Size: {size_mb:.2f} MB[/green]")
+
+        if verbose:
+            console.print("\n[bold]Export Details:[/bold]")
+            quality_scores = [r.quality_score for r in recipes]
+            avg_score = sum(quality_scores) / len(quality_scores)
+            console.print(f"  Average quality: {avg_score:.1f}/100")
+            console.print(f"  Format: {format}")
+            console.print(f"  Path: {output_path.absolute()}")
+
+    except FileNotFoundError:
+        console.print(f"[red]❌ Error: Database not found: {database}[/red]")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]❌ Error during export: {str(e)}[/red]")
+        if verbose:
+            console.print_exception()
+        sys.exit(1)
 
 
 def _export_json(recipes: list, output_path: Path) -> None:
