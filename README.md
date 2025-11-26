@@ -1,5 +1,9 @@
 # EPUB Recipe Parser
 
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
 Extract structured recipe data from EPUB cookbook files with high accuracy using advanced HTML parsing, TOC analysis, and quality scoring.
 
 ## Features
@@ -21,9 +25,9 @@ pip install epub-recipe-parser
 For development:
 
 ```bash
-git clone https://github.com/yourusername/epub-recipe-parser.git
+git clone https://github.com/YOUR_USERNAME/epub-recipe-parser.git
 cd epub-recipe-parser
-pip install -e ".[dev]"
+uv pip install -e ".[dev]"
 ```
 
 ## Quick Start
@@ -63,7 +67,37 @@ epub-parser export recipes.db --format json --output recipes.json
 
 ## How It Works
 
-The parser uses a multi-strategy approach:
+The parser uses a multi-strategy extraction pipeline:
+
+```mermaid
+graph TD
+    A[EPUB File] --> B[Parse EPUB Structure]
+    B --> C[Extract HTML Documents]
+    C --> D[Split by Headers]
+    D --> E[For Each Section]
+    E --> F{Validate as Recipe?}
+    F -->|No| E
+    F -->|Yes| G[Extract Title]
+    G --> H[Extract Ingredients]
+    H --> I[Extract Instructions]
+    I --> J[Extract Metadata]
+    J --> K[Calculate Quality Score]
+    K --> L{Score >= Threshold?}
+    L -->|No| E
+    L -->|Yes| M[Save to Database]
+    M --> N[Apply Tags]
+    N --> E
+    E --> O[Export Results]
+    O --> P[SQLite/JSON/Markdown]
+
+    style A fill:#e1f5ff
+    style F fill:#fff4e1
+    style L fill:#fff4e1
+    style M fill:#e1ffe1
+    style P fill:#e1ffe1
+```
+
+### Process Steps
 
 1. **HTML Structure Analysis**: Directly parses EPUB HTML content preserving structure
 2. **Section Splitting**: Intelligently splits documents by headers to isolate recipes

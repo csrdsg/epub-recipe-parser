@@ -1,11 +1,10 @@
 """Table of Contents analysis and validation."""
 
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Optional
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 import re
-import ebooklib
 from ebooklib import epub
 
 from epub_recipe_parser.core.models import Recipe
@@ -71,9 +70,7 @@ class TOCAnalyzer:
                     # Filter out obvious non-recipes
                     if self.is_likely_recipe(title):
                         recipes.append(
-                            TOCEntry(
-                                title=title, href=href, category=parent_category, level=level
-                            )
+                            TOCEntry(title=title, href=href, category=parent_category, level=level)
                         )
 
         for item in toc:
@@ -150,6 +147,10 @@ class TOCAnalyzer:
     @staticmethod
     def fuzzy_match(str1: str, str2: str) -> float:
         """Calculate fuzzy match score between two strings."""
+        # Input validation
+        if not str1 or not str2:
+            return 0.0
+
         # Normalize strings
         s1 = re.sub(r"[^\w\s]", "", str1.lower())
         s2 = re.sub(r"[^\w\s]", "", str2.lower())
@@ -158,12 +159,14 @@ class TOCAnalyzer:
         s1 = re.sub(r"^\[\]", "", s1).strip()
         s2 = re.sub(r"^\[\]", "", s2).strip()
 
+        # Edge case: both empty after normalization
+        if not s1 or not s2:
+            return 0.0
+
         # Calculate similarity
         return SequenceMatcher(None, s1, s2).ratio()
 
-    def validate_extraction(
-        self, recipes: List[Recipe], epub_path: str | Path
-    ) -> ValidationReport:
+    def validate_extraction(self, recipes: List[Recipe], epub_path: str | Path) -> ValidationReport:
         """Validate extraction against TOC."""
         epub_path = Path(epub_path)
         toc_recipes = self.extract_toc_recipes(epub_path)
@@ -185,20 +188,23 @@ class TOCAnalyzer:
 
         for toc_recipe in toc_recipes:
             best_match = None
-            best_score = 0
+            best_score = 0.0
 
-            for extracted in recipes:
-                score = self.fuzzy_match(toc_recipe.title, extracted.title)
-                if score > best_score:
-                    best_score = score
-                    best_match = extracted
+            # Bounds checking: Ensure recipes list is not empty
+            if recipes:
+                for extracted in recipes:
+                    score = self.fuzzy_match(toc_recipe.title, extracted.title)
+                    if score > best_score:
+                        best_score = score
+                        best_match = extracted
 
-            if best_score >= match_threshold:
+            if best_score >= match_threshold and best_match is not None:
                 matches.append((toc_recipe, best_match, best_score))
             else:
                 missing.append(toc_recipe)
 
-        coverage = len(matches) / len(toc_recipes) if toc_recipes else 0
+        # Bounds checking: Prevent division by zero
+        coverage = len(matches) / len(toc_recipes) if toc_recipes else 0.0
 
         return ValidationReport(
             toc_count=len(toc_recipes),

@@ -1,7 +1,7 @@
 """EPUB structure analysis."""
 
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 from dataclasses import dataclass
 import ebooklib
 from ebooklib import epub
@@ -97,7 +97,7 @@ class EPUBStructureAnalyzer:
                 for level in range(1, 7):
                     headers = soup.find_all(f"h{level}")
                     header_counts[f"h{level}"] += len(headers)
-            except:
+            except Exception:
                 continue
 
         return header_counts
@@ -123,7 +123,7 @@ class EPUBStructureAnalyzer:
                 for indicator in indicators:
                     if indicator in text:
                         indicators[indicator] += 1
-            except:
+            except Exception:
                 continue
 
         return indicators
@@ -138,24 +138,22 @@ class EPUBStructureAnalyzer:
         print(f"  Title: {report.title}")
         print(f"  Author: {report.author}")
 
-        print(f"\n📚 STRUCTURE:")
+        print("\n📚 STRUCTURE:")
         print(f"  Total items: {report.total_items}")
         print(f"  Document items: {report.document_items}")
         print(f"  Image items: {report.image_items}")
 
-        print(f"\n📑 TABLE OF CONTENTS:")
+        print("\n📑 TABLE OF CONTENTS:")
         if report.has_toc:
             print(f"  TOC entries: {report.toc_entries}")
         else:
             print("  No TOC found")
 
-        print(f"\n🔍 HEADER DISTRIBUTION:")
+        print("\n🔍 HEADER DISTRIBUTION:")
         for level, count in sorted(report.header_distribution.items()):
             if count > 0:
                 print(f"  {level}: {count}")
 
-        print(f"\n🍳 RECIPE PATTERNS:")
-        for indicator, count in sorted(
-            report.recipe_indicators.items(), key=lambda x: -x[1]
-        ):
+        print("\n🍳 RECIPE PATTERNS:")
+        for indicator, count in sorted(report.recipe_indicators.items(), key=lambda x: -x[1]):
             print(f"  '{indicator}': found in {count}/{report.document_items} documents")

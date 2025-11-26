@@ -30,15 +30,40 @@ class EPUBRecipeExtractor:
         self.metadata_extractor = MetadataExtractor()
 
     def extract_from_epub(self, epub_path: str | Path) -> List[Recipe]:
-        """Extract all recipes from an EPUB file."""
+        """Extract all recipes from an EPUB file with proper error handling.
+
+        Args:
+            epub_path: Path to EPUB file
+
+        Returns:
+            List of extracted Recipe objects
+
+        Raises:
+            FileNotFoundError: If EPUB file does not exist
+            PermissionError: If EPUB file cannot be accessed
+            ValueError: If EPUB file is invalid or corrupted
+        """
         epub_path = Path(epub_path)
+
+        if not epub_path.exists():
+            raise FileNotFoundError(f"EPUB file not found: {epub_path}")
+
+        if not epub_path.is_file():
+            raise ValueError(f"Path is not a file: {epub_path}")
+
         print(f"\n📖 Processing EPUB: {epub_path.name}")
 
         try:
             book = epub.read_epub(str(epub_path))
+        except PermissionError as e:
+            print(f"   ❌ Permission denied reading EPUB: {e}")
+            raise PermissionError(f"Cannot access EPUB file: {epub_path}") from e
+        except (OSError, IOError) as e:
+            print(f"   ❌ I/O error reading EPUB: {e}")
+            raise ValueError(f"Cannot read EPUB file (possibly corrupted): {epub_path}") from e
         except Exception as e:
-            print(f"   ❌ Error reading EPUB: {e}")
-            return []
+            print(f"   ❌ Unexpected error reading EPUB: {e}")
+            raise ValueError(f"Invalid EPUB file: {epub_path}") from e
 
         # Get metadata
         creator_meta = book.get_metadata("DC", "creator")
@@ -73,8 +98,17 @@ class EPUBRecipeExtractor:
             content = item.get_content()
             main_soup = HTMLParser.parse_html(content)
 
-            # Split into sections
-            sections = HTMLParser.split_by_headers(main_soup)
+            # Extract section title from HTML if present
+            section_tag = main_soup.find("section")
+            section_title_attr = None
+            if section_tag:
+                title_value = section_tag.get("title")
+                # Type safety: Ensure title is a string
+                if title_value and isinstance(title_value, str):
+                    section_title_attr = title_value
+
+            # Split into sections, passing section title for fallback
+            sections = HTMLParser.split_by_headers(main_soup, section_title=section_title_attr)
 
             for section_title, section_soup in sections:
                 # Extract text for validation
@@ -126,7 +160,9 @@ class EPUBRecipeExtractor:
         print(f"   ✅ Extracted {len(recipes)} recipes from EPUB\n")
         return recipes
 
-    def extract_from_section(self, section_soup, title: str = "", book_name: str = "", author: str = "") -> Optional[Recipe]:
+    def extract_from_section(
+        self, section_soup, title: str = "", book_name: str = "", author: str = ""
+    ) -> Optional[Recipe]:
         """Extract a single recipe from HTML section."""
         text = HTMLParser.extract_text(section_soup)
 

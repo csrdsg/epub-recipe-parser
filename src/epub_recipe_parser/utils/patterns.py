@@ -3,29 +3,45 @@
 import re
 
 # Measurement patterns
+# Matches quantities with units, including fractions (½, ¾, etc.) and plain numbers
+# Fixed: Simplified to prevent ReDoS vulnerability by avoiding nested quantifiers
+# Enhanced to catch more ingredient formats like "1 lemon", "10 basil leaves", etc.
 MEASUREMENT_PATTERN = re.compile(
-    r"\b\d+[\s/-]*(?:cup|tablespoon|teaspoon|pound|ounce|gram|kg|lb|oz|tsp|tbsp|clove|slice)s?\b",
+    r"(?:\b\d+(?:[.,]\d+)?|[¼½¾⅓⅔⅕⅖⅗⅘⅙⅚⅐⅛⅜⅝⅞])"
+    r"[\s/-]?"
+    r"(?:cup|tablespoon|teaspoon|pound|ounce|gram|kg|lb|oz|tsp|tbsp|clove|slice|"
+    r"liter|litre|ml|milliliter|pint|quart|gallon|stick|head|bunch|sprig|stalk|"
+    r"can|jar|package|box|bag|container)s?\b|"
+    r"\b\d+(?:\s+-\s+\d+)?\s+"
+    r"(?:large|medium|small|whole|fresh|dried|frozen|good-sized)?\s*"
+    r"(?:egg|garlic|onion|carrot|potato|tomato|pepper|clove|lemon|lime|orange|"
+    r"basil|parsley|mint|leaf|leaves|zucchini|squash|chicken|apple|pear|banana)s?\b",
     re.IGNORECASE,
 )
 
 # Cooking verb patterns
 COOKING_VERBS_PATTERN = re.compile(
     r"\b(heat|cook|grill|place|add|mix|stir|combine|season|serve|roast|smoke|bake|"
-    r"prepare|chop|slice|transfer|remove|cover|simmer)\b",
+    r"prepare|chop|slice|transfer|remove|cover|simmer|melt|boil|whisk|fold|pour|"
+    r"spread|drain|toss|sauté|fry|bring|preheat|beat|knead|strain|swirl|watch|"
+    r"continue|sprinkle|garnish|arrange|chill|freeze|refrigerate|dunk|toast|crush|"
+    r"divide|roll|lay|brush|repeat|spray|drizzle|take|let|cool|seal|store|dissolve|"
+    r"steep|adjust|dilute|caramelize|harden|slowly|reduce)\b",
     re.IGNORECASE,
 )
 
 # Metadata patterns
+# Updated to match ranges with "to" as well as hyphens (e.g., "4-6", "4 to 6")
 SERVES_PATTERN = re.compile(
-    r"(?:serves?|servings?|yield[s]?|makes?)[:\s]+(\d+(?:\s*-\s*\d+)?)", re.IGNORECASE
+    r"(?:serves?|servings?|yield[s]?|makes?)[:\s]+(\d+(?:\s*(?:-|to)\s*\d+)?)", re.IGNORECASE
 )
 
 PREP_TIME_PATTERN = re.compile(
-    r"prep(?:aration)?\s*time[:\s]+([^.\n]+?)(?=\n|cook|total|$)", re.IGNORECASE
+    r"(?:prep(?:aration)?|active|total)(?:\s*time)?[:\s]+([^.\n]+?)(?=\n|cook|$)", re.IGNORECASE
 )
 
 COOK_TIME_PATTERN = re.compile(
-    r"cook(?:ing)?\s*time[:\s]+([^.\n]+?)(?=\n|prep|total|$)", re.IGNORECASE
+    r"(?:cook(?:ing)?|passive|baking)(?:\s*time)?[:\s]+([^.\n]+?)(?=\n|prep|$)", re.IGNORECASE
 )
 
 # Ingredient section keywords
@@ -39,7 +55,21 @@ INSTRUCTION_KEYWORDS = [
     "preparation",
     "how to",
     "steps",
+    "to make",
+    "to prepare",
+    "to cook",
+    "to serve",
+    "let's cook",
+    "cooking instructions",
+    "recipe method",
+    "the method",
 ]
+
+# Narrative instruction prefixes (used for detecting instructions in narrative format)
+NARRATIVE_INSTRUCTION_PREFIXES = re.compile(
+    r"^(to make|to prepare|to cook|to assemble|to serve|for the)\s+(?:the\s+)?(\w+)[:\s]",
+    re.IGNORECASE,
+)
 
 # Exclude patterns for recipe validation
 EXCLUDE_KEYWORDS = [
@@ -57,6 +87,15 @@ EXCLUDE_KEYWORDS = [
     "tools needed",
     "conversion chart",
     "glossary",
+    "chapter",
+    "how to cut",
+    "how to make",
+    "techniques",
+    "basics",
+    "fundamentals",
+    "tips",
+    "mechanics",
+    "history",
 ]
 
 # Cooking methods

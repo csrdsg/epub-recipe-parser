@@ -60,3 +60,10 @@ test_output/
 *.epub
 books/
 recipes/
+
+# Development/debug files
+test_*.py
+debug_*.py
+analyze_*.py
+demo_*.py
+*_temp.py
