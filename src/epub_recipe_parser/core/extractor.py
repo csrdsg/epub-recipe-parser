@@ -1,7 +1,9 @@
 """Main EPUB recipe extractor."""
 
+import logging
 from pathlib import Path
 from typing import List, Optional
+
 import ebooklib
 from ebooklib import epub
 
@@ -15,6 +17,8 @@ from epub_recipe_parser.extractors import (
 )
 from epub_recipe_parser.utils.html import HTMLParser
 from epub_recipe_parser.utils.text import clean_text
+
+logger = logging.getLogger(__name__)
 
 
 class EPUBRecipeExtractor:
@@ -98,17 +102,55 @@ class EPUBRecipeExtractor:
             content = item.get_content()
             main_soup = HTMLParser.parse_html(content)
 
-            # Extract section title from HTML if present
-            section_tag = main_soup.find("section")
-            section_title_attr = None
-            if section_tag:
-                title_value = section_tag.get("title")
-                # Type safety: Ensure title is a string
-                if title_value and isinstance(title_value, str):
-                    section_title_attr = title_value
+            # Try section-based parsing first (modern EPUB structure)
+            all_sections = main_soup.find_all("section", recursive=True)
 
-            # Split into sections, passing section title for fallback
-            sections = HTMLParser.split_by_headers(main_soup, section_title=section_title_attr)
+            # Filter to recipe sections (exclude wrapper sections)
+            recipe_sections = []
+            for section in all_sections:
+                # Skip "part" sections which are wrappers
+                epub_type = section.get('epub:type')
+                if epub_type == 'part':
+                    continue
+
+                # Must have substantial content
+                text = section.get_text(strip=True)
+                if len(text) > 100:
+                    recipe_sections.append(section)
+
+            # Process each section as a potential recipe
+            if recipe_sections:
+                sections = []
+                for section in recipe_sections:
+                    # Extract title from header within section
+                    title = None
+                    for header in section.find_all(['h1', 'h2', 'h3', 'h4', 'h5'], limit=3):
+                        header_text = header.get_text(strip=True)
+                        if len(header_text) > 3 and not header_text.isdigit():
+                            title = header_text
+                            break
+
+                    if not title:
+                        title = section.get('aria-label', 'Untitled')
+
+                    # Create soup from this section
+                    import copy
+                    from bs4 import BeautifulSoup
+                    section_soup = BeautifulSoup("<html><body></body></html>", "html.parser")
+                    section_soup.body.append(copy.copy(section))
+
+                    sections.append((title, section_soup))
+            else:
+                # Fall back to header-based splitting
+                section_tag = main_soup.find("section")
+                section_title_attr = None
+                if section_tag:
+                    title_value = section_tag.get("title")
+                    # Type safety: Ensure title is a string
+                    if title_value and isinstance(title_value, str):
+                        section_title_attr = title_value
+
+                sections = HTMLParser.split_by_headers(main_soup, section_title=section_title_attr)
 
             for section_title, section_soup in sections:
                 # Extract text for validation
@@ -127,6 +169,12 @@ class EPUBRecipeExtractor:
 
                 # Extract components
                 ingredients = self.ingredients_extractor.extract(section_soup, text)
+
+                # Skip sections where no ingredients could be extracted
+                if not ingredients:
+                    logger.debug(f"Skipping '{title}': No ingredients found")
+                    continue
+
                 instructions = self.instructions_extractor.extract(section_soup, text)
                 metadata = self.metadata_extractor.extract(section_soup, text, title)
 

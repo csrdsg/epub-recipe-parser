@@ -18,6 +18,9 @@ class IngredientsExtractor:
     """Extract ingredient lists from HTML."""
 
     # Additional ingredient section keywords for text-based extraction
+    # Note: "for the" headers are allowed WITHIN recipes to organize multi-section
+    # ingredient lists (e.g., "For the Dough", "For the Filling"). The RecipeValidator
+    # will filter out "FOR THE X" patterns when they appear as standalone section titles.
     TEXT_INGREDIENT_KEYWORDS = [
         "for the",
         "ingredient",
@@ -111,28 +114,48 @@ class IngredientsExtractor:
 
         logger.debug(f"Strategy 2: Checked {list_count} lists, none matched criteria")
 
-        # Strategy 3: Find paragraphs with measurements in HTML
-        logger.debug("Strategy 3: Searching for paragraphs with measurements")
+        # Strategy 2.5: Find ingredients in paragraph tags with specific classes
+        logger.debug("Strategy 2.5: Searching for paragraph-based ingredients (class-based)")
+        para_ingredients = IngredientsExtractor._extract_from_paragraph_classes(soup)
+        if para_ingredients:
+            logger.info(
+                f"Strategy 2.5 SUCCESS: Found ingredients in paragraphs ({len(para_ingredients)} chars)"
+            )
+            return para_ingredients
+
+        # Strategy 3: Find multiple short paragraphs with measurements
+        logger.debug("Strategy 3: Searching for multiple consecutive paragraphs with measurements")
+        consecutive_ingredients = []
         para_count = 0
+
         for paragraph in soup.find_all("p"):
             text_content = paragraph.get_text(strip=True)
-            if len(text_content) < 30:
-                continue
 
-            para_count += 1
-            measurement_count = len(MEASUREMENT_PATTERN.findall(text_content))
+            # Check each paragraph for measurements (typical ingredient length)
+            if len(text_content) >= 10 and len(text_content) < 150:
+                para_count += 1
+                if MEASUREMENT_PATTERN.search(text_content):
+                    consecutive_ingredients.append(text_content)
+                elif len(consecutive_ingredients) > 0:
+                    # Break run if gap is too large
+                    if len(consecutive_ingredients) >= 3:
+                        # Found a good run
+                        result = "\n".join(f"- {item}" for item in consecutive_ingredients)
+                        logger.info(
+                            f"Strategy 3 SUCCESS: Found ingredients in consecutive paragraphs ({len(result)} chars, {len(consecutive_ingredients)} items)"
+                        )
+                        return result
+                    consecutive_ingredients = []
 
-            logger.debug(
-                f"Strategy 3: Paragraph {para_count} has {measurement_count} measurements ({len(text_content)} chars)"
+        # Check final run
+        if len(consecutive_ingredients) >= 3:
+            result = "\n".join(f"- {item}" for item in consecutive_ingredients)
+            logger.info(
+                f"Strategy 3 SUCCESS: Found ingredients in consecutive paragraphs ({len(result)} chars, {len(consecutive_ingredients)} items)"
             )
+            return result
 
-            if measurement_count >= 3:
-                logger.info(
-                    f"Strategy 3 SUCCESS: Found ingredients in paragraph ({len(text_content)} chars, {measurement_count} measurements)"
-                )
-                return text_content
-
-        logger.debug(f"Strategy 3: Checked {para_count} paragraphs, none matched criteria")
+        logger.debug(f"Strategy 3: Checked {para_count} paragraphs, no suitable runs found")
 
         # Strategy 4: Text-based extraction with "For the" patterns
         logger.debug(
@@ -146,6 +169,61 @@ class IngredientsExtractor:
             return text_ingredients
 
         logger.warning("All extraction strategies FAILED: No ingredients found")
+        return None
+
+    @staticmethod
+    def _extract_from_paragraph_classes(soup: BeautifulSoup) -> Optional[str]:
+        """Extract ingredients from <p> tags with ingredient-related classes.
+
+        Many modern EPUBs format ingredients as individual paragraphs with
+        semantic CSS classes rather than lists.
+        """
+        # CSS classes used for ingredients in various EPUBs
+        ingredient_classes = [
+            'ing', 'ingt', 'ings', 'ingst', 'ingd',  # Common patterns
+            'ingredient', 'ing-item', 'recipe-ingredient'
+        ]
+
+        ingredients = []
+
+        for para in soup.find_all('p'):
+            para_classes = para.get('class', [])
+
+            # Handle both list and string types for class attribute
+            if isinstance(para_classes, str):
+                para_classes = [para_classes]
+            elif not isinstance(para_classes, list):
+                para_classes = []
+
+            # Check if any class matches ingredient patterns
+            if any(cls in ingredient_classes for cls in para_classes):
+                text = para.get_text(strip=True)
+
+                # Skip sub-headers like "For the sauce:", "INGREDIENTS", etc.
+                if not text or len(text) < 3:
+                    continue
+
+                lower_text = text.lower()
+                # Skip common section headers that aren't actual ingredients
+                skip_patterns = [
+                    'ingredients', 'you will need', 'you\'ll need',
+                    'what you need', 'shopping list'
+                ]
+                # Also skip "for the X" patterns (recipe sub-sections)
+                if any(pattern in lower_text for pattern in skip_patterns):
+                    # This is a section header, not an ingredient
+                    continue
+                if lower_text.startswith('for the ') and len(text) < 40:
+                    # This is likely a sub-section header like "For the dressing"
+                    continue
+
+                # Valid ingredient
+                ingredients.append(text)
+
+        # Return formatted ingredients if we found at least 3
+        if len(ingredients) >= 3:
+            return "\n".join(f"- {item}" for item in ingredients)
+
         return None
 
     @staticmethod
