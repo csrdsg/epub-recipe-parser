@@ -12,6 +12,7 @@ from rich.panel import Panel
 from epub_recipe_parser.core import EPUBRecipeExtractor, ExtractorConfig
 from epub_recipe_parser.storage import RecipeDatabase
 from epub_recipe_parser.analyzers import TOCAnalyzer, EPUBStructureAnalyzer
+from epub_recipe_parser.exporters import ObsidianVaultExporter
 
 console = Console()
 
@@ -424,14 +425,27 @@ def list_tags(database: str):
 @click.option(
     "--format",
     "-f",
-    type=click.Choice(["json", "markdown"], case_sensitive=False),
+    type=click.Choice(["json", "markdown", "vault"], case_sensitive=False),
     default="json",
-    help="Export format",
+    help="Export format (json, markdown, or vault for Obsidian)",
 )
-@click.option("--output", "-o", help="Output file path")
+@click.option("--output", "-o", help="Output file/directory path")
 @click.option("--min-quality", "-q", type=int, help="Minimum quality score filter")
+@click.option(
+    "--organize-by",
+    type=click.Choice(["book", "method", "flat"], case_sensitive=False),
+    default="book",
+    help="Vault organization method (book, method, or flat) - only for vault format",
+)
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed export information")
-def export(database: str, format: str, output: str | None, min_quality: int | None, verbose: bool):
+def export(
+    database: str,
+    format: str,
+    output: str | None,
+    min_quality: int | None,
+    organize_by: str,
+    verbose: bool,
+):
     """Export recipes from database to various formats."""
     try:
         db = RecipeDatabase(database)
@@ -455,21 +469,34 @@ def export(database: str, format: str, output: str | None, min_quality: int | No
                 console.print(f"[dim]Try lowering --min-quality (current: {min_quality})[/dim]")
             return
 
-        # Determine output file
+        # Determine output path
         if output is None:
-            output = f"recipes.{format}"
+            if format == "vault":
+                output = "recipes-vault"
+            else:
+                output = f"recipes.{format}"
 
         output_path = Path(output)
 
         # Display export header
         console.print()
-        console.print(Panel.fit(
-            f"[bold cyan]Exporting Recipes[/bold cyan]\n"
-            f"Format: {format.upper()}\n"
-            f"Recipes: {len(recipes)}\n"
-            f"Output: {output_path.name}",
-            border_style="cyan"
-        ))
+        if format == "vault":
+            console.print(Panel.fit(
+                f"[bold cyan]Exporting Recipes[/bold cyan]\n"
+                f"Format: Obsidian Vault\n"
+                f"Recipes: {len(recipes)}\n"
+                f"Organization: By {organize_by}\n"
+                f"Output: {output_path.name}/",
+                border_style="cyan"
+            ))
+        else:
+            console.print(Panel.fit(
+                f"[bold cyan]Exporting Recipes[/bold cyan]\n"
+                f"Format: {format.upper()}\n"
+                f"Recipes: {len(recipes)}\n"
+                f"Output: {output_path.name}",
+                border_style="cyan"
+            ))
         console.print()
 
         # Export with progress indicator
@@ -484,25 +511,49 @@ def export(database: str, format: str, output: str | None, min_quality: int | No
                 _export_json(recipes, output_path)
             elif format == "markdown":
                 _export_markdown(recipes, output_path)
+            elif format == "vault":
+                exporter = ObsidianVaultExporter()
+                stats = exporter.export_vault(recipes, output_path, organize_by=organize_by)
+                # Store stats for later display
+                vault_stats = stats
 
             progress.update(task, completed=True)
 
         # Success message
-        file_size = output_path.stat().st_size
-        size_mb = file_size / (1024 * 1024)
-
         console.print()
-        console.print(f"[green]✅ Successfully exported {len(recipes)} recipes[/green]")
-        console.print(f"[green]📄 Output: {output}[/green]")
-        console.print(f"[green]💾 Size: {size_mb:.2f} MB[/green]")
+        if format == "vault":
+            console.print(f"[green]✅ Successfully exported {vault_stats['success']} recipes[/green]")
+            console.print(f"[green]📁 Vault directory: {output}[/green]")
+            if vault_stats['failed'] > 0:
+                console.print(f"[yellow]⚠️  Failed to export {vault_stats['failed']} recipes[/yellow]")
+            if vault_stats['duplicates'] > 0:
+                console.print(
+                    f"[blue]ℹ️  {vault_stats['duplicates']} duplicate names resolved with book suffixes[/blue]"
+                )
 
-        if verbose:
-            console.print("\n[bold]Export Details:[/bold]")
-            quality_scores = [r.quality_score for r in recipes]
-            avg_score = sum(quality_scores) / len(quality_scores)
-            console.print(f"  Average quality: {avg_score:.1f}/100")
-            console.print(f"  Format: {format}")
-            console.print(f"  Path: {output_path.absolute()}")
+            if verbose:
+                console.print("\n[bold]Vault Details:[/bold]")
+                quality_scores = [r.quality_score for r in recipes]
+                avg_score = sum(quality_scores) / len(quality_scores)
+                console.print(f"  Average quality: {avg_score:.1f}/100")
+                console.print(f"  Organization: By {organize_by}")
+                console.print(f"  Path: {output_path.absolute()}")
+                console.print(f"  Files created: {vault_stats['success']}")
+        else:
+            file_size = output_path.stat().st_size
+            size_mb = file_size / (1024 * 1024)
+
+            console.print(f"[green]✅ Successfully exported {len(recipes)} recipes[/green]")
+            console.print(f"[green]📄 Output: {output}[/green]")
+            console.print(f"[green]💾 Size: {size_mb:.2f} MB[/green]")
+
+            if verbose:
+                console.print("\n[bold]Export Details:[/bold]")
+                quality_scores = [r.quality_score for r in recipes]
+                avg_score = sum(quality_scores) / len(quality_scores)
+                console.print(f"  Average quality: {avg_score:.1f}/100")
+                console.print(f"  Format: {format}")
+                console.print(f"  Path: {output_path.absolute()}")
 
     except FileNotFoundError:
         console.print(f"[red]❌ Error: Database not found: {database}[/red]")
