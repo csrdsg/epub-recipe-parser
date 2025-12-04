@@ -342,6 +342,43 @@ class RecipeDatabase:
         )
         return [row[0] for row in cursor.fetchall()]
 
+    def _row_to_recipe(self, row: sqlite3.Row, cursor: sqlite3.Cursor) -> Recipe:
+        """Convert database row to Recipe object.
+
+        Args:
+            row: Database row from query
+            cursor: Database cursor for fetching related data
+
+        Returns:
+            Recipe object populated from row data
+        """
+        # Get tags for this recipe
+        recipe_tags = self._get_recipe_tags(cursor, row["id"])
+
+        # Deserialize metadata from JSON
+        metadata_json = row["metadata"]
+        recipe_metadata = json.loads(metadata_json) if metadata_json else {}
+
+        return Recipe(
+            title=row["title"],
+            book=row["book"],
+            author=row["author"],
+            chapter=row["chapter"],
+            epub_section=row["epub_section"],
+            ingredients=row["ingredients"],
+            instructions=row["instructions"],
+            serves=row["serves"],
+            prep_time=row["prep_time"],
+            cook_time=row["cook_time"],
+            notes=row["notes"],
+            tags=recipe_tags,
+            cooking_method=row["cooking_method"],
+            protein_type=row["protein_type"],
+            quality_score=row["quality_score"],
+            raw_content=row["raw_content"],
+            metadata=recipe_metadata,
+        )
+
     def query(
         self,
         filters: Optional[Dict[str, Any]] = None,
@@ -448,32 +485,7 @@ class RecipeDatabase:
 
             recipes = []
             for row in rows:
-                # Get tags for this recipe
-                recipe_tags = self._get_recipe_tags(cursor, row["id"])
-
-                # Deserialize metadata from JSON
-                metadata_json = row["metadata"]
-                recipe_metadata = json.loads(metadata_json) if metadata_json else {}
-
-                recipe = Recipe(
-                    title=row["title"],
-                    book=row["book"],
-                    author=row["author"],
-                    chapter=row["chapter"],
-                    epub_section=row["epub_section"],
-                    ingredients=row["ingredients"],
-                    instructions=row["instructions"],
-                    serves=row["serves"],
-                    prep_time=row["prep_time"],
-                    cook_time=row["cook_time"],
-                    notes=row["notes"],
-                    tags=recipe_tags,
-                    cooking_method=row["cooking_method"],
-                    protein_type=row["protein_type"],
-                    quality_score=row["quality_score"],
-                    raw_content=row["raw_content"],
-                    metadata=recipe_metadata,
-                )
+                recipe = self._row_to_recipe(row, cursor)
                 recipes.append(recipe)
 
         return recipes
@@ -536,32 +548,7 @@ class RecipeDatabase:
 
             recipes = []
             for row in rows:
-                # Get tags for this recipe
-                recipe_tags = self._get_recipe_tags(cursor, row["id"])
-
-                # Deserialize metadata from JSON
-                metadata_json = row["metadata"]
-                recipe_metadata = json.loads(metadata_json) if metadata_json else {}
-
-                recipe = Recipe(
-                    title=row["title"],
-                    book=row["book"],
-                    author=row["author"],
-                    chapter=row["chapter"],
-                    epub_section=row["epub_section"],
-                    ingredients=row["ingredients"],
-                    instructions=row["instructions"],
-                    serves=row["serves"],
-                    prep_time=row["prep_time"],
-                    cook_time=row["cook_time"],
-                    notes=row["notes"],
-                    tags=recipe_tags,
-                    cooking_method=row["cooking_method"],
-                    protein_type=row["protein_type"],
-                    quality_score=row["quality_score"],
-                    raw_content=row["raw_content"],
-                    metadata=recipe_metadata,
-                )
+                recipe = self._row_to_recipe(row, cursor)
                 recipes.append(recipe)
 
         return recipes

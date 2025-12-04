@@ -55,18 +55,18 @@ class EPUBRecipeExtractor:
         if not epub_path.is_file():
             raise ValueError(f"Path is not a file: {epub_path}")
 
-        print(f"\n📖 Processing EPUB: {epub_path.name}")
+        logger.info("Processing EPUB: %s", epub_path.name)
 
         try:
             book = epub.read_epub(str(epub_path))
         except PermissionError as e:
-            print(f"   ❌ Permission denied reading EPUB: {e}")
+            logger.error("Permission denied reading EPUB: %s", e)
             raise PermissionError(f"Cannot access EPUB file: {epub_path}") from e
         except (OSError, IOError) as e:
-            print(f"   ❌ I/O error reading EPUB: {e}")
+            logger.error("I/O error reading EPUB: %s", e)
             raise ValueError(f"Cannot read EPUB file (possibly corrupted): {epub_path}") from e
         except Exception as e:
-            print(f"   ❌ Unexpected error reading EPUB: {e}")
+            logger.error("Unexpected error reading EPUB: %s", e)
             raise ValueError(f"Invalid EPUB file: {epub_path}") from e
 
         # Get metadata
@@ -90,7 +90,7 @@ class EPUBRecipeExtractor:
 
         # Get all document items
         doc_items = list(book.get_items_of_type(ebooklib.ITEM_DOCUMENT))
-        print(f"   Found {len(doc_items)} HTML documents")
+        logger.debug("Found %d HTML documents", len(doc_items))
 
         recipes = []
         for item in doc_items:
@@ -220,9 +220,10 @@ class EPUBRecipeExtractor:
                     continue
 
                 recipes.append(recipe)
-                print(f"   ✓ [{len(recipes)}] {recipe.title[:60]} (score: {recipe.quality_score})")
+                logger.debug("Extracted recipe [%d]: %s (score: %d)",
+                           len(recipes), recipe.title[:60], recipe.quality_score)
 
-        print(f"   ✅ Extracted {len(recipes)} recipes from EPUB\n")
+        logger.info("Extracted %d recipes from EPUB", len(recipes))
         return recipes
 
     def extract_from_section(
