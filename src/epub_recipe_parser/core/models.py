@@ -60,3 +60,9 @@ class ExtractorConfig:
     header_split_level: Optional[int] = None
     include_raw_content: bool = True
     custom_validators: List[Callable] = field(default_factory=list)
+
+    # A/B Testing Configuration
+    enable_ab_testing: bool = False
+    ab_test_use_new: bool = False  # If True, use new system in production
+    ab_test_log_level: str = "INFO"  # DEBUG, INFO, or NONE
+    ab_test_success_threshold: int = 25  # Minimum characters for extraction success

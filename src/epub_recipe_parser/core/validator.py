@@ -17,20 +17,18 @@ class RecipeValidator:
     SUB_SECTION_PATTERNS = [
         # Equipment and metadata sections
         r"^(?:special\s+)?equipment(?:\s+needed)?:?$",
-        r"^(?:gear|tools?)(?:\s+needed)?:?$",
+        r"^(?:gear|tools?)(?:\s+needed)?:?.*$",  # Catches "Gear:Handheld smoker"
         r"^(?:what\s+you(?:'ll)?\s+need):?$",
-        r"^(?:prep|cook|active|passive|total)\s+time:?",
+        # Time-related metadata (expanded)
+        r"^(?:prep|cook|active|passive|total|smoking|grilling|marinating|resting|rising|chilling|cooling|infusing)\s+time:?.*$",
         r"^(?:serves?|servings?|yield[s]?|makes?):?\s*\d*$",
-
         # Serving and presentation sections
         r"^to\s+serve:?$",
         r"^for\s+serving:?$",
         r"^garnish:?$",
         r"^presentation:?$",
-
         # Recipe component sub-sections (ALL CAPS "FOR THE X" pattern)
         r"^FOR\s+THE\s+",  # "FOR THE VINAIGRETTE", "FOR THE FILLING"
-
         # Short ingredient-like titles
         r"^(?:coarse|sea|kosher)\s+salt$",
         r"^(?:black|white)\s+pepper$",
@@ -41,13 +39,11 @@ class RecipeValidator:
         r"^glaze$",
         r"^rub$",
         r"^brine$",
-
         # Very generic component names (but allow if longer/more specific)
         r"^(?:the\s+)?(?:filling|topping|coating|crust)$",
-
         # Notes and tips sections
         r"^(?:note|tip|variation)s?:?$",
-        r"^(?:indoor|outdoor)\s+alternative:?$",
+        r"^(?:indoor|outdoor)\s+alternative:?.*$",  # Catches "indoor alternative:..."
         r"^(?:chef(?:'s)?|cook(?:'s)?)\s+(?:note|tip)s?:?$",
     ]
 
@@ -141,30 +137,57 @@ class RecipeValidator:
         Returns:
             True if this looks like an ingredient, False otherwise
         """
+        # Pattern for ingredient quantity lines (e.g., "2 cups flour", "4 tablespoons butter", "¼ cup oil")
+        # Matches:
+        #   - number + optional fraction + measurement/container unit
+        #   - OR just fraction + measurement/container unit (e.g., "¼ cup", "½ bottle")
+        # This must be checked FIRST before length checks
+        ingredient_quantity_pattern = r"^(?:\d+(?:\s*[/¼½¾⅓⅔⅛⅜⅝⅞])?|[¼½¾⅓⅔⅛⅜⅝⅞])\s*(?:cups?|tablespoons?|teaspoons?|pounds?|ounces?|lbs?|ozs?|tsps?|tbsps?|g|kg|ml|l|bottles?|beans?|cans?|packages?|jars?)\b"
+
+        if re.match(ingredient_quantity_pattern, title, re.IGNORECASE):
+            return True
+
         # If title is reasonably long, it's probably a real recipe title
-        if len(title) > 30:
+        # But we already checked for quantity patterns above
+        if len(title) > 40:
             return False
 
         # If very short and contains measurement/quantity patterns, likely ingredient
         if len(title) < 20:
             # Check if it contains numbers (quantity indicator)
-            if re.search(r'\d+', title):
+            if re.search(r"\d+", title):
                 return True
 
             # Common single-ingredient patterns
             single_ingredient_words = [
-                'coarse salt', 'sea salt', 'kosher salt', 'black pepper',
-                'white pepper', 'olive oil', 'vegetable oil', 'butter',
-                'flour', 'sugar', 'water', 'salt', 'pepper', 'oil',
+                "coarse salt",
+                "sea salt",
+                "kosher salt",
+                "black pepper",
+                "white pepper",
+                "olive oil",
+                "vegetable oil",
+                "butter",
+                "flour",
+                "sugar",
+                "water",
+                "salt",
+                "pepper",
+                "oil",
+                "bay leaves",
+                "eggs",
+                "egg",
+                "garlic",
+                "onion",
             ]
 
             title_lower = title.lower()
             for ingredient in single_ingredient_words:
-                if ingredient == title_lower or title_lower.startswith(ingredient + ' '):
+                if ingredient == title_lower or title_lower.startswith(ingredient + " "):
                     return True
 
         # Check if entire title matches ingredient patterns (contains measurements)
-        if len(title) < 25 and MEASUREMENT_PATTERN.search(title):
+        if len(title) < 30 and MEASUREMENT_PATTERN.search(title):
             # Title contains measurement units - likely an ingredient line
             return True
 

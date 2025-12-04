@@ -10,7 +10,7 @@ class HTMLParser:
     @staticmethod
     def parse_html(content: bytes) -> BeautifulSoup:
         """Parse HTML content to BeautifulSoup."""
-        soup = BeautifulSoup(content, "html.parser")
+        soup = BeautifulSoup(content, "lxml")
 
         # Remove script and style elements
         for script in soup(["script", "style"]):
@@ -153,7 +153,7 @@ class HTMLParser:
                 continue
 
             # Create a new soup for this section
-            section_soup = BeautifulSoup("<html><body></body></html>", "html.parser")
+            section_soup = BeautifulSoup("<html><body></body></html>", "lxml")
             body = section_soup.body
 
             # Type safety: Ensure body element exists

@@ -109,8 +109,8 @@ class EPUBRecipeExtractor:
             recipe_sections = []
             for section in all_sections:
                 # Skip "part" sections which are wrappers
-                epub_type = section.get('epub:type')
-                if epub_type == 'part':
+                epub_type = section.get("epub:type")
+                if epub_type == "part":
                     continue
 
                 # Must have substantial content
@@ -124,18 +124,19 @@ class EPUBRecipeExtractor:
                 for section in recipe_sections:
                     # Extract title from header within section
                     title = None
-                    for header in section.find_all(['h1', 'h2', 'h3', 'h4', 'h5'], limit=3):
+                    for header in section.find_all(["h1", "h2", "h3", "h4", "h5"], limit=3):
                         header_text = header.get_text(strip=True)
                         if len(header_text) > 3 and not header_text.isdigit():
                             title = header_text
                             break
 
                     if not title:
-                        title = section.get('aria-label', 'Untitled')
+                        title = section.get("aria-label", "Untitled")
 
                     # Create soup from this section
                     import copy
                     from bs4 import BeautifulSoup
+
                     section_soup = BeautifulSoup("<html><body></body></html>", "html.parser")
                     section_soup.body.append(copy.copy(section))
 
@@ -170,6 +171,18 @@ class EPUBRecipeExtractor:
                 # Extract components
                 ingredients = self.ingredients_extractor.extract(section_soup, text)
 
+                # A/B Testing: Compare extraction methods (if enabled)
+                ab_metadata = None
+                if self.config.enable_ab_testing:
+                    ab_metadata = self._compare_extraction_methods(
+                        section_soup, text, ingredients
+                    )
+
+                    # Optionally use new system in production
+                    if self.config.ab_test_use_new and ab_metadata.get("new_ingredients"):
+                        ingredients = ab_metadata["new_ingredients"]
+                        logger.info("A/B Test: Using NEW extraction method")
+
                 # Skip sections where no ingredients could be extracted
                 if not ingredients:
                     logger.debug(f"Skipping '{title}': No ingredients found")
@@ -194,6 +207,10 @@ class EPUBRecipeExtractor:
                     protein_type=metadata.get("protein_type"),
                     raw_content=text if self.config.include_raw_content else None,
                 )
+
+                # Add A/B test metadata if testing is enabled
+                if ab_metadata:
+                    recipe.metadata["ab_test"] = ab_metadata
 
                 # Calculate quality score
                 recipe.quality_score = self.scorer.score_recipe(recipe)
@@ -241,3 +258,63 @@ class EPUBRecipeExtractor:
             return None
 
         return recipe
+
+    def _compare_extraction_methods(
+        self, soup, text: str, old_ingredients: Optional[str]
+    ) -> dict:
+        """Compare old vs new extraction methods for A/B testing.
+
+        Returns:
+            dict: Comparison metadata including:
+                - old_ingredients: Original extraction result
+                - new_ingredients: Patterns-based extraction result
+                - old_length: Character count of old result
+                - new_length: Character count of new result
+                - agreement: Boolean (both succeeded or both failed)
+                - confidence: Pattern-based confidence score
+                - linguistic_score: Linguistic analysis score
+                - strategy: Which strategy was used by patterns module
+                - used_structural_detector: Whether structural detector was used
+        """
+        from epub_recipe_parser.extractors.ingredients import IngredientsExtractor
+
+        # Run new extraction method
+        new_ingredients, pattern_metadata = IngredientsExtractor.extract_with_patterns(
+            soup, text
+        )
+
+        # Compare results using configurable success threshold
+        threshold = self.config.ab_test_success_threshold
+        old_success = old_ingredients is not None and len(old_ingredients) > threshold
+        new_success = new_ingredients is not None and len(new_ingredients) > threshold
+        agreement = old_success == new_success
+
+        comparison = {
+            "old_ingredients": old_ingredients,
+            "new_ingredients": new_ingredients,
+            "old_length": len(old_ingredients) if old_ingredients else 0,
+            "new_length": len(new_ingredients) if new_ingredients else 0,
+            "old_success": old_success,
+            "new_success": new_success,
+            "agreement": agreement,
+            "confidence": pattern_metadata.get("confidence", 0.0),
+            "linguistic_score": pattern_metadata.get("linguistic_score", 0.0),
+            "strategy": pattern_metadata.get("strategy"),
+            "used_structural_detector": pattern_metadata.get(
+                "used_structural_detector", False
+            ),
+        }
+
+        # Log comparison
+        if self.config.ab_test_log_level in ["DEBUG", "INFO"]:
+            if not agreement:
+                logger.warning(
+                    f"A/B DISAGREEMENT: old={old_success}, new={new_success}, "
+                    f"confidence={comparison['confidence']:.2f}"
+                )
+            else:
+                logger.debug(
+                    f"A/B AGREEMENT: both {'succeeded' if old_success else 'failed'}"
+                )
+
+        return comparison

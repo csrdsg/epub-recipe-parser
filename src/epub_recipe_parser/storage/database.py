@@ -1,5 +1,6 @@
 """SQLite storage for recipes."""
 
+import json
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -200,9 +201,10 @@ class RecipeDatabase:
                 cursor.execute("ALTER TABLE recipes ADD COLUMN new_field TEXT")
                 self._set_schema_version(cursor, 2, "Added new_field to recipes")
         """
-        # Future migrations will be added here
-        # Each migration should check the current version and apply changes sequentially
-        pass
+        # Migration 2: Add metadata column for A/B testing and extensibility
+        if current_version < 2:
+            cursor.execute("ALTER TABLE recipes ADD COLUMN metadata TEXT")
+            self._set_schema_version(cursor, 2, "Added metadata column for JSON data")
 
     def save_recipes(self, recipes: List[Recipe]) -> int:
         """Save recipes to database with proper error handling and tag support.
@@ -225,6 +227,9 @@ class RecipeDatabase:
 
             for recipe in recipes:
                 try:
+                    # Serialize metadata to JSON
+                    metadata_json = json.dumps(recipe.metadata) if recipe.metadata else None
+
                     # Insert recipe
                     cursor.execute(
                         """
@@ -233,8 +238,8 @@ class RecipeDatabase:
                             serves, prep_time, cook_time,
                             ingredients, instructions, notes,
                             cooking_method, protein_type,
-                            quality_score, raw_content
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            quality_score, raw_content, metadata
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                         (
                             recipe.title,
@@ -252,6 +257,7 @@ class RecipeDatabase:
                             recipe.protein_type,
                             recipe.quality_score,
                             recipe.raw_content,
+                            metadata_json,
                         ),
                     )
 
@@ -445,6 +451,10 @@ class RecipeDatabase:
                 # Get tags for this recipe
                 recipe_tags = self._get_recipe_tags(cursor, row["id"])
 
+                # Deserialize metadata from JSON
+                metadata_json = row["metadata"]
+                recipe_metadata = json.loads(metadata_json) if metadata_json else {}
+
                 recipe = Recipe(
                     title=row["title"],
                     book=row["book"],
@@ -462,6 +472,7 @@ class RecipeDatabase:
                     protein_type=row["protein_type"],
                     quality_score=row["quality_score"],
                     raw_content=row["raw_content"],
+                    metadata=recipe_metadata,
                 )
                 recipes.append(recipe)
 
@@ -528,6 +539,10 @@ class RecipeDatabase:
                 # Get tags for this recipe
                 recipe_tags = self._get_recipe_tags(cursor, row["id"])
 
+                # Deserialize metadata from JSON
+                metadata_json = row["metadata"]
+                recipe_metadata = json.loads(metadata_json) if metadata_json else {}
+
                 recipe = Recipe(
                     title=row["title"],
                     book=row["book"],
@@ -545,6 +560,7 @@ class RecipeDatabase:
                     protein_type=row["protein_type"],
                     quality_score=row["quality_score"],
                     raw_content=row["raw_content"],
+                    metadata=recipe_metadata,
                 )
                 recipes.append(recipe)
 
@@ -597,3 +613,74 @@ class RecipeDatabase:
             count = cursor.fetchone()[0]
 
         return count
+
+    def get_ab_test_stats(self) -> dict:
+        """Get A/B testing statistics from metadata.
+
+        Returns:
+            dict: Statistics including:
+                - total_tests: Number of recipes with A/B data
+                - agreement_rate: % where both methods agreed
+                - old_success_rate: % where old method succeeded
+                - new_success_rate: % where new method succeeded
+                - avg_confidence: Average confidence score
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT
+                    COUNT(*) as total,
+                    AVG(json_extract(metadata, '$.ab_test.agreement')) as agreement_rate,
+                    AVG(json_extract(metadata, '$.ab_test.old_success')) as old_success_rate,
+                    AVG(json_extract(metadata, '$.ab_test.new_success')) as new_success_rate,
+                    AVG(json_extract(metadata, '$.ab_test.confidence')) as avg_confidence
+                FROM recipes
+                WHERE json_extract(metadata, '$.ab_test') IS NOT NULL
+            """)
+
+            row = cursor.fetchone()
+
+        return {
+            "total_tests": row[0] or 0,
+            "agreement_rate": (row[1] or 0) * 100,
+            "old_success_rate": (row[2] or 0) * 100,
+            "new_success_rate": (row[3] or 0) * 100,
+            "avg_confidence": row[4] or 0,
+        }
+
+    def get_ab_test_disagreements(self) -> list:
+        """Get recipes where old and new methods disagreed.
+
+        Returns:
+            list: Recipes with disagreement, sorted by confidence
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT
+                    title,
+                    book,
+                    json_extract(metadata, '$.ab_test.old_success') as old_success,
+                    json_extract(metadata, '$.ab_test.new_success') as new_success,
+                    json_extract(metadata, '$.ab_test.confidence') as confidence,
+                    json_extract(metadata, '$.ab_test.strategy') as strategy
+                FROM recipes
+                WHERE json_extract(metadata, '$.ab_test.agreement') = 0
+                ORDER BY COALESCE(confidence, 0) DESC
+            """)
+
+            rows = cursor.fetchall()
+
+        return [
+            {
+                "title": row[0],
+                "book": row[1],
+                "old_success": bool(row[2]),
+                "new_success": bool(row[3]),
+                "confidence": row[4],
+                "strategy": row[5],
+            }
+            for row in rows
+        ]

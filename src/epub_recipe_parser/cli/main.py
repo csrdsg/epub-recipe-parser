@@ -36,12 +36,14 @@ def extract(epub_file: str, output: str, min_quality: int, verbose: bool):
 
         # Display header
         console.print()
-        console.print(Panel.fit(
-            f"[bold cyan]Extracting Recipes[/bold cyan]\n"
-            f"File: {epub_path.name}\n"
-            f"Min Quality: {min_quality}",
-            border_style="cyan"
-        ))
+        console.print(
+            Panel.fit(
+                f"[bold cyan]Extracting Recipes[/bold cyan]\n"
+                f"File: {epub_path.name}\n"
+                f"Min Quality: {min_quality}",
+                border_style="cyan",
+            )
+        )
         console.print()
 
         config = ExtractorConfig(min_quality_score=min_quality)
@@ -87,15 +89,17 @@ def extract(epub_file: str, output: str, min_quality: int, verbose: bool):
         poor = len([s for s in quality_scores if s < 30])
 
         console.print()
-        console.print(Panel.fit(
-            f"[bold]Quality Distribution[/bold]\n\n"
-            f"Average Score: [cyan]{avg_score:.1f}/100[/cyan]\n\n"
-            f"[green]● Excellent (70+):[/green] {excellent} ({excellent*100/len(recipes):.1f}%)\n"
-            f"[blue]● Good (50-69):[/blue] {good} ({good*100/len(recipes):.1f}%)\n"
-            f"[yellow]● Fair (30-49):[/yellow] {fair} ({fair*100/len(recipes):.1f}%)\n"
-            f"[red]● Poor (<30):[/red] {poor} ({poor*100/len(recipes):.1f}%)",
-            border_style="green"
-        ))
+        console.print(
+            Panel.fit(
+                f"[bold]Quality Distribution[/bold]\n\n"
+                f"Average Score: [cyan]{avg_score:.1f}/100[/cyan]\n\n"
+                f"[green]● Excellent (70+):[/green] {excellent} ({excellent*100/len(recipes):.1f}%)\n"
+                f"[blue]● Good (50-69):[/blue] {good} ({good*100/len(recipes):.1f}%)\n"
+                f"[yellow]● Fair (30-49):[/yellow] {fair} ({fair*100/len(recipes):.1f}%)\n"
+                f"[red]● Poor (<30):[/red] {poor} ({poor*100/len(recipes):.1f}%)",
+                border_style="green",
+            )
+        )
 
         # Show verbose details if requested
         if verbose:
@@ -133,14 +137,16 @@ def batch(directory: str, output: str, min_quality: int, pattern: str, verbose: 
 
         # Display batch header
         console.print()
-        console.print(Panel.fit(
-            f"[bold cyan]Batch Processing[/bold cyan]\n"
-            f"Directory: {dir_path}\n"
-            f"Files: {len(epub_files)}\n"
-            f"Pattern: {pattern}\n"
-            f"Min Quality: {min_quality}",
-            border_style="cyan"
-        ))
+        console.print(
+            Panel.fit(
+                f"[bold cyan]Batch Processing[/bold cyan]\n"
+                f"Directory: {dir_path}\n"
+                f"Files: {len(epub_files)}\n"
+                f"Pattern: {pattern}\n"
+                f"Min Quality: {min_quality}",
+                border_style="cyan",
+            )
+        )
         console.print()
 
         config = ExtractorConfig(min_quality_score=min_quality)
@@ -159,16 +165,12 @@ def batch(directory: str, output: str, min_quality: int, pattern: str, verbose: 
             console=console,
         ) as progress:
             task = progress.add_task(
-                f"Processing {len(epub_files)} files...",
-                total=len(epub_files)
+                f"Processing {len(epub_files)} files...", total=len(epub_files)
             )
 
             for epub_file in epub_files:
                 try:
-                    progress.update(
-                        task,
-                        description=f"Processing {epub_file.name}..."
-                    )
+                    progress.update(task, description=f"Processing {epub_file.name}...")
 
                     recipes = extractor.extract_from_epub(str(epub_file))
                     all_recipes.extend(recipes)
@@ -182,15 +184,15 @@ def batch(directory: str, output: str, min_quality: int, pattern: str, verbose: 
                 except Exception as e:
                     failed_files.append((epub_file.name, str(e)))
                     if verbose:
-                        console.print(
-                            f"  [red]✗[/red] {epub_file.name}: {str(e)}"
-                        )
+                        console.print(f"  [red]✗[/red] {epub_file.name}: {str(e)}")
 
                 progress.advance(task)
 
         # Summary
         console.print()
-        console.print(f"[green]✅ Successfully processed {len(epub_files) - len(failed_files)}/{len(epub_files)} files[/green]")
+        console.print(
+            f"[green]✅ Successfully processed {len(epub_files) - len(failed_files)}/{len(epub_files)} files[/green]"
+        )
         console.print(f"[green]💾 Total recipes extracted: {len(all_recipes)}[/green]")
         console.print(f"[green]📁 Saved to {output}[/green]")
 
@@ -208,12 +210,14 @@ def batch(directory: str, output: str, min_quality: int, pattern: str, verbose: 
             excellent = len([s for s in quality_scores if s >= 70])
 
             console.print()
-            console.print(Panel.fit(
-                f"[bold]Quality Summary[/bold]\n\n"
-                f"Average Score: [cyan]{avg_score:.1f}/100[/cyan]\n"
-                f"Excellent (70+): [green]{excellent}[/green] ({excellent*100/len(all_recipes):.1f}%)",
-                border_style="green"
-            ))
+            console.print(
+                Panel.fit(
+                    f"[bold]Quality Summary[/bold]\n\n"
+                    f"Average Score: [cyan]{avg_score:.1f}/100[/cyan]\n"
+                    f"Excellent (70+): [green]{excellent}[/green] ({excellent*100/len(all_recipes):.1f}%)",
+                    border_style="green",
+                )
+            )
 
     except Exception as e:
         console.print(f"[red]❌ Error during batch processing: {str(e)}[/red]")
@@ -232,11 +236,12 @@ def analyze(epub_file: str, verbose: bool):
 
         # Display header
         console.print()
-        console.print(Panel.fit(
-            f"[bold cyan]Analyzing EPUB Structure[/bold cyan]\n"
-            f"File: {epub_path.name}",
-            border_style="cyan"
-        ))
+        console.print(
+            Panel.fit(
+                f"[bold cyan]Analyzing EPUB Structure[/bold cyan]\n" f"File: {epub_path.name}",
+                border_style="cyan",
+            )
+        )
         console.print()
 
         # Analyze with progress indicator
@@ -481,22 +486,26 @@ def export(
         # Display export header
         console.print()
         if format == "vault":
-            console.print(Panel.fit(
-                f"[bold cyan]Exporting Recipes[/bold cyan]\n"
-                f"Format: Obsidian Vault\n"
-                f"Recipes: {len(recipes)}\n"
-                f"Organization: By {organize_by}\n"
-                f"Output: {output_path.name}/",
-                border_style="cyan"
-            ))
+            console.print(
+                Panel.fit(
+                    f"[bold cyan]Exporting Recipes[/bold cyan]\n"
+                    f"Format: Obsidian Vault\n"
+                    f"Recipes: {len(recipes)}\n"
+                    f"Organization: By {organize_by}\n"
+                    f"Output: {output_path.name}/",
+                    border_style="cyan",
+                )
+            )
         else:
-            console.print(Panel.fit(
-                f"[bold cyan]Exporting Recipes[/bold cyan]\n"
-                f"Format: {format.upper()}\n"
-                f"Recipes: {len(recipes)}\n"
-                f"Output: {output_path.name}",
-                border_style="cyan"
-            ))
+            console.print(
+                Panel.fit(
+                    f"[bold cyan]Exporting Recipes[/bold cyan]\n"
+                    f"Format: {format.upper()}\n"
+                    f"Recipes: {len(recipes)}\n"
+                    f"Output: {output_path.name}",
+                    border_style="cyan",
+                )
+            )
         console.print()
 
         # Export with progress indicator
@@ -522,11 +531,15 @@ def export(
         # Success message
         console.print()
         if format == "vault":
-            console.print(f"[green]✅ Successfully exported {vault_stats['success']} recipes[/green]")
+            console.print(
+                f"[green]✅ Successfully exported {vault_stats['success']} recipes[/green]"
+            )
             console.print(f"[green]📁 Vault directory: {output}[/green]")
-            if vault_stats['failed'] > 0:
-                console.print(f"[yellow]⚠️  Failed to export {vault_stats['failed']} recipes[/yellow]")
-            if vault_stats['duplicates'] > 0:
+            if vault_stats["failed"] > 0:
+                console.print(
+                    f"[yellow]⚠️  Failed to export {vault_stats['failed']} recipes[/yellow]"
+                )
+            if vault_stats["duplicates"] > 0:
                 console.print(
                     f"[blue]ℹ️  {vault_stats['duplicates']} duplicate names resolved with book suffixes[/blue]"
                 )
@@ -562,6 +575,138 @@ def export(
         console.print(f"[red]❌ Error during export: {str(e)}[/red]")
         if verbose:
             console.print_exception()
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("database", type=click.Path(exists=True))
+def ab_report(database: str):
+    """Generate A/B testing report from database.
+
+    Analyzes recipes extracted with A/B testing enabled and compares
+    the performance of old vs new extraction methods.
+
+    \b
+    ARGUMENTS:
+        database: Path to SQLite database with A/B test data
+    """
+    try:
+        db = RecipeDatabase(database)
+
+        # Get overall statistics
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Analyzing A/B test data...", total=None)
+            stats = db.get_ab_test_stats()
+            disagreements = db.get_ab_test_disagreements()
+            progress.update(task, completed=True)
+
+        if stats["total_tests"] == 0:
+            console.print("[yellow]⚠️  No A/B test data found in database[/yellow]")
+            console.print(
+                "[dim]Run extraction with --enable-ab-testing flag to generate test data[/dim]"
+            )
+            return
+
+        # Print summary
+        console.print()
+        console.print(
+            Panel.fit(
+                "[bold cyan]A/B Testing Summary[/bold cyan]", border_style="cyan"
+            )
+        )
+        console.print()
+
+        console.print(f"[bold]Total recipes tested:[/bold] {stats['total_tests']}")
+        console.print(f"[bold]Agreement rate:[/bold] {stats['agreement_rate']:.1f}%")
+        console.print(
+            f"[bold]Old method success:[/bold] {stats['old_success_rate']:.1f}%"
+        )
+        console.print(
+            f"[bold]New method success:[/bold] {stats['new_success_rate']:.1f}%"
+        )
+        console.print(
+            f"[bold]Average confidence:[/bold] {stats['avg_confidence']:.2f}"
+        )
+
+        # Calculate improvement
+        improvement = stats["new_success_rate"] - stats["old_success_rate"]
+        console.print()
+        if improvement > 0:
+            console.print(
+                f"[green]✓ New method improves by {improvement:.1f}%[/green]"
+            )
+        elif improvement < 0:
+            console.print(
+                f"[red]✗ New method worse by {abs(improvement):.1f}%[/red]"
+            )
+        else:
+            console.print("[yellow]= No difference in success rate[/yellow]")
+
+        # Get disagreements
+        if disagreements:
+            console.print()
+            console.print(
+                f"[bold yellow]Disagreements ({len(disagreements)})[/bold yellow]"
+            )
+            console.print()
+
+            table = Table(show_header=True, header_style="bold cyan")
+            table.add_column("Title", style="cyan", width=40, no_wrap=False)
+            table.add_column("Book", style="magenta", width=30, no_wrap=False)
+            table.add_column("Old", justify="center", width=5)
+            table.add_column("New", justify="center", width=5)
+            table.add_column("Confidence", justify="right", width=10)
+            table.add_column("Strategy", width=25, no_wrap=False)
+
+            for d in disagreements[:20]:  # Show top 20
+                old_icon = "✓" if d["old_success"] else "✗"
+                new_icon = "✓" if d["new_success"] else "✗"
+
+                # Color code confidence (handle NULL values)
+                conf_val = d["confidence"]
+                if conf_val is None:
+                    conf_str = "[dim]N/A[/dim]"
+                elif conf_val >= 0.7:
+                    conf_str = f"[green]{conf_val:.2f}[/green]"
+                elif conf_val >= 0.5:
+                    conf_str = f"[yellow]{conf_val:.2f}[/yellow]"
+                else:
+                    conf_str = f"[red]{conf_val:.2f}[/red]"
+
+                table.add_row(
+                    d["title"][:40],
+                    d["book"][:30] if d["book"] else "N/A",
+                    old_icon,
+                    new_icon,
+                    conf_str,
+                    d["strategy"] or "N/A",
+                )
+
+            console.print(table)
+
+            if len(disagreements) > 20:
+                console.print()
+                console.print(
+                    f"[dim]Showing top 20 of {len(disagreements)} disagreements[/dim]"
+                )
+        else:
+            console.print()
+            console.print(
+                "[green]✓ Perfect agreement! Both methods produced identical results.[/green]"
+            )
+
+        console.print()
+
+    except FileNotFoundError:
+        console.print(f"[red]❌ Error: Database not found: {database}[/red]")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]❌ Error generating report: {str(e)}[/red]")
+        console.print_exception()
         sys.exit(1)
 
 

@@ -172,6 +172,81 @@ class IngredientsExtractor:
         return None
 
     @staticmethod
+    def extract_with_patterns(
+        soup: BeautifulSoup, text: str
+    ) -> tuple[Optional[str], dict]:
+        """Extract ingredients using new patterns module with confidence scoring.
+
+        Returns:
+            tuple: (ingredients_text, metadata_dict)
+                - ingredients_text: Extracted ingredients or None
+                - metadata_dict: {
+                    'strategy': str,
+                    'confidence': float,
+                    'linguistic_score': float,
+                    'used_structural_detector': bool
+                  }
+        """
+        from epub_recipe_parser.core.patterns import (
+            IngredientPatternDetector,
+            LinguisticAnalyzer,
+            StructuralDetector,
+        )
+
+        metadata = {
+            "strategy": None,
+            "confidence": 0.0,
+            "linguistic_score": 0.0,
+            "used_structural_detector": False,
+        }
+
+        # Try StructuralDetector first
+        logger.debug("Patterns: Trying StructuralDetector.find_ingredient_zones()")
+        zones = StructuralDetector.find_ingredient_zones(soup)
+        if zones:
+            metadata["used_structural_detector"] = True
+            # Extract text from zones
+            ingredients_text = "\n".join(zone.get_text(strip=True) for zone in zones)
+            if len(ingredients_text) > 50:
+                confidence = IngredientPatternDetector.calculate_confidence(
+                    ingredients_text
+                )
+                linguistic = LinguisticAnalyzer.calculate_linguistic_score(
+                    ingredients_text
+                )
+                metadata["strategy"] = "structural_detector"
+                metadata["confidence"] = confidence
+                metadata["linguistic_score"] = linguistic
+
+                if confidence >= 0.5:
+                    logger.info(
+                        f"Patterns SUCCESS: Structural detector (confidence={confidence:.2f})"
+                    )
+                    return ingredients_text, metadata
+                else:
+                    logger.debug(
+                        f"Patterns: Structural detector found zones but low confidence ({confidence:.2f})"
+                    )
+
+        # Fall back to original strategies with confidence augmentation
+        logger.debug("Patterns: Falling back to original extraction with augmentation")
+        ingredients = IngredientsExtractor.extract(soup, text)
+
+        if ingredients:
+            confidence = IngredientPatternDetector.calculate_confidence(ingredients)
+            linguistic = LinguisticAnalyzer.calculate_linguistic_score(ingredients)
+            metadata["strategy"] = "original_with_patterns"
+            metadata["confidence"] = confidence
+            metadata["linguistic_score"] = linguistic
+            logger.info(
+                f"Patterns SUCCESS: Original method enhanced (confidence={confidence:.2f})"
+            )
+            return ingredients, metadata
+
+        logger.warning("Patterns FAILED: No ingredients found")
+        return None, metadata
+
+    @staticmethod
     def _extract_from_paragraph_classes(soup: BeautifulSoup) -> Optional[str]:
         """Extract ingredients from <p> tags with ingredient-related classes.
 
@@ -180,14 +255,20 @@ class IngredientsExtractor:
         """
         # CSS classes used for ingredients in various EPUBs
         ingredient_classes = [
-            'ing', 'ingt', 'ings', 'ingst', 'ingd',  # Common patterns
-            'ingredient', 'ing-item', 'recipe-ingredient'
+            "ing",
+            "ingt",
+            "ings",
+            "ingst",
+            "ingd",  # Common patterns
+            "ingredient",
+            "ing-item",
+            "recipe-ingredient",
         ]
 
         ingredients = []
 
-        for para in soup.find_all('p'):
-            para_classes = para.get('class', [])
+        for para in soup.find_all("p"):
+            para_classes = para.get("class", [])
 
             # Handle both list and string types for class attribute
             if isinstance(para_classes, str):
@@ -206,14 +287,17 @@ class IngredientsExtractor:
                 lower_text = text.lower()
                 # Skip common section headers that aren't actual ingredients
                 skip_patterns = [
-                    'ingredients', 'you will need', 'you\'ll need',
-                    'what you need', 'shopping list'
+                    "ingredients",
+                    "you will need",
+                    "you'll need",
+                    "what you need",
+                    "shopping list",
                 ]
                 # Also skip "for the X" patterns (recipe sub-sections)
                 if any(pattern in lower_text for pattern in skip_patterns):
                     # This is a section header, not an ingredient
                     continue
-                if lower_text.startswith('for the ') and len(text) < 40:
+                if lower_text.startswith("for the ") and len(text) < 40:
                     # This is likely a sub-section header like "For the dressing"
                     continue
 
