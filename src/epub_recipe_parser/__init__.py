@@ -1,10 +1,24 @@
 """EPUB Recipe Parser - Extract structured recipe data from EPUB cookbook files."""
 
 from epub_recipe_parser.core.extractor import EPUBRecipeExtractor
-from epub_recipe_parser.core.models import Recipe, ExtractorConfig
+from epub_recipe_parser.core.models import (
+    Recipe,
+    ExtractorConfig,
+    ExtractionConfig,
+    ABTestConfig,
+    LogLevel,
+)
 
 __version__ = "0.1.0"
-__all__ = ["EPUBRecipeExtractor", "Recipe", "ExtractorConfig", "extract_recipes"]
+__all__ = [
+    "EPUBRecipeExtractor",
+    "Recipe",
+    "ExtractorConfig",
+    "ExtractionConfig",
+    "ABTestConfig",
+    "LogLevel",
+    "extract_recipes",
+]
 
 
 def extract_recipes(epub_path: str, config=None):
