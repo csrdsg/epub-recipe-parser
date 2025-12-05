@@ -168,7 +168,7 @@ class IngredientsExtractor:
             )
             return text_ingredients
 
-        logger.warning("All extraction strategies FAILED: No ingredients found")
+        logger.debug("All extraction strategies FAILED: No ingredients found (expected for non-recipe sections)")
         return None
 
     @staticmethod
@@ -243,7 +243,7 @@ class IngredientsExtractor:
             )
             return ingredients, metadata
 
-        logger.warning("Patterns FAILED: No ingredients found")
+        logger.debug("Patterns FAILED: No ingredients found (expected for non-recipe sections)")
         return None, metadata
 
     @staticmethod

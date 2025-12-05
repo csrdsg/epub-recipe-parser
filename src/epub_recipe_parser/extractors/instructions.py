@@ -634,5 +634,5 @@ class InstructionsExtractor:
             )
             return instructions, metadata
 
-        logger.warning("Patterns FAILED: No instructions found")
+        logger.debug("Patterns FAILED: No instructions found (expected for non-recipe sections)")
         return None, metadata
