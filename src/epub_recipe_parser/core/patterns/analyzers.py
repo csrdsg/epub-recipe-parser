@@ -283,3 +283,201 @@ class InstructionLinguisticAnalyzer:
             return 0.5
         else:
             return 0.0
+
+
+class MetadataLinguisticAnalyzer:
+    """Performs linguistic analysis specifically for metadata text.
+
+    This analyzer complements MetadataPatternDetector by focusing on
+    linguistic quality indicators for recipe metadata.
+    """
+
+    # Metadata-specific keywords
+    METADATA_KEYWORDS = {
+        "serves", "servings", "yield", "yields", "makes", "portions",
+        "prep", "preparation", "cook", "cooking", "bake", "baking",
+        "time", "minutes", "hours", "total", "ready",
+        "difficulty", "easy", "medium", "hard", "skill", "level"
+    }
+
+    # Numeric patterns for metadata
+    NUMBER_INDICATORS = {
+        "digit_count": re.compile(r'\d'),
+        "time_unit": re.compile(r'\b(?:minute|min|hour|hr)s?\b', re.IGNORECASE),
+        "range_pattern": re.compile(r'\d+\s*[-to]\s*\d+'),
+    }
+
+    # Narrative indicators (negative for metadata)
+    NARRATIVE_WORDS = {
+        "the", "then", "when", "after", "before", "until", "while",
+        "you", "your", "will", "should", "can", "may", "this", "that"
+    }
+
+    @staticmethod
+    def calculate_metadata_score(text: str) -> float:
+        """Calculate linguistic quality score for metadata text.
+
+        This score measures how well the text exhibits linguistic patterns
+        typical of recipe metadata (concise, numeric, keyword-rich).
+
+        Args:
+            text: Text to analyze
+
+        Returns:
+            Linguistic score between 0.0 and 1.0
+
+        Examples:
+            >>> text = "Serves 4-6 | Prep: 15 minutes | Cook: 30 minutes"
+            >>> MetadataLinguisticAnalyzer.calculate_metadata_score(text)
+            0.92
+
+            >>> text = "This recipe will serve you and your family well..."
+            >>> MetadataLinguisticAnalyzer.calculate_metadata_score(text)
+            0.15
+        """
+        if not text or len(text.strip()) < 3:
+            return 0.0
+
+        text_lower = text.lower()
+
+        score = 0.0
+
+        # Component 1: Metadata keyword presence (35% weight)
+        keyword_score = MetadataLinguisticAnalyzer._calculate_keyword_presence(text_lower)
+        score += keyword_score * 0.35
+
+        # Component 2: Numeric content (30% weight)
+        numeric_score = MetadataLinguisticAnalyzer._calculate_numeric_score(text_lower)
+        score += numeric_score * 0.30
+
+        # Component 3: Conciseness (20% weight)
+        conciseness_score = MetadataLinguisticAnalyzer._check_conciseness(text)
+        score += conciseness_score * 0.20
+
+        # Component 4: Absence of narrative (15% weight)
+        narrative_score = MetadataLinguisticAnalyzer._check_narrative_absence(text_lower)
+        score += narrative_score * 0.15
+
+        return max(0.0, min(score, 1.0))
+
+    @staticmethod
+    def _calculate_keyword_presence(text: str) -> float:
+        """Calculate metadata keyword presence score.
+
+        Args:
+            text: Lowercase text
+
+        Returns:
+            Score 0.0-1.0 based on metadata keyword frequency
+        """
+        words = text.split()
+        if not words:
+            return 0.0
+
+        keyword_count = sum(
+            1 for word in words
+            if word.rstrip(',.;:!?') in MetadataLinguisticAnalyzer.METADATA_KEYWORDS
+        )
+
+        # Calculate keyword frequency per 10 words
+        keyword_frequency = (keyword_count / len(words)) * 10
+
+        # Optimal range: 1-3 keywords per 10 words for metadata
+        if 1 <= keyword_frequency <= 3:
+            return 1.0
+        elif keyword_frequency < 1:
+            return keyword_frequency
+        elif 3 < keyword_frequency <= 5:
+            return 1.0 - ((keyword_frequency - 3) / 4.0)
+        else:
+            return 0.0
+
+    @staticmethod
+    def _calculate_numeric_score(text: str) -> float:
+        """Calculate numeric content score.
+
+        Metadata typically contains numbers (servings, times).
+
+        Args:
+            text: Lowercase text
+
+        Returns:
+            Score 0.0-1.0 based on numeric content
+        """
+        score = 0.0
+
+        # Check for digit presence
+        digit_matches = MetadataLinguisticAnalyzer.NUMBER_INDICATORS['digit_count'].findall(text)
+        if digit_matches:
+            # More digits generally better for metadata (up to a point)
+            digit_count = len(digit_matches)
+            if 1 <= digit_count <= 8:
+                score += 0.4
+            elif digit_count > 8:
+                score += 0.2  # Too many digits might be ingredients
+
+        # Check for time units
+        if MetadataLinguisticAnalyzer.NUMBER_INDICATORS['time_unit'].search(text):
+            score += 0.3
+
+        # Check for range patterns (e.g., "4-6")
+        if MetadataLinguisticAnalyzer.NUMBER_INDICATORS['range_pattern'].search(text):
+            score += 0.3
+
+        return min(score, 1.0)
+
+    @staticmethod
+    def _check_conciseness(text: str) -> float:
+        """Check if text is concise (metadata is typically brief).
+
+        Args:
+            text: Text to check
+
+        Returns:
+            Score 0.0-1.0 based on conciseness
+        """
+        text_length = len(text)
+
+        # Metadata typically 5-100 characters
+        # Very short (<5) or very long (>200) less likely
+        if 5 <= text_length <= 100:
+            return 1.0
+        elif text_length < 5:
+            return text_length / 5.0
+        elif 100 < text_length <= 200:
+            return 1.0 - ((text_length - 100) / 100.0)
+        else:
+            return 0.0
+
+    @staticmethod
+    def _check_narrative_absence(text: str) -> float:
+        """Check for absence of narrative words.
+
+        Metadata should not contain narrative/instructional language.
+
+        Args:
+            text: Lowercase text
+
+        Returns:
+            Score 0.0-1.0 (higher = fewer narrative words)
+        """
+        words = text.split()
+        if not words:
+            return 1.0
+
+        # Count narrative words
+        narrative_count = sum(
+            1 for word in words
+            if word.rstrip(',.;:!?') in MetadataLinguisticAnalyzer.NARRATIVE_WORDS
+        )
+
+        narrative_ratio = narrative_count / len(words)
+
+        # Metadata should have very few narrative words
+        # <10% = excellent, >30% = poor
+        if narrative_ratio < 0.1:
+            return 1.0
+        elif narrative_ratio < 0.3:
+            return 1.0 - ((narrative_ratio - 0.1) / 0.2)
+        else:
+            return 0.0

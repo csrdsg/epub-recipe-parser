@@ -221,3 +221,138 @@ class MetadataExtractor:
                 validated[key] = value
 
         return validated
+
+    @staticmethod
+    def extract_with_patterns(
+        soup: BeautifulSoup, text: str, title: str = ""
+    ) -> tuple[Dict[str, str], Dict[str, any]]:
+        """Modern pattern-based metadata extraction with confidence scoring.
+
+        This method uses multi-dimensional pattern detection to extract metadata:
+        1. Structural HTML detection (Schema.org, CSS classes, headers)
+        2. Pattern-based confidence scoring
+        3. Linguistic quality analysis
+
+        Args:
+            soup: BeautifulSoup object of the recipe HTML
+            text: Plain text content of the recipe
+            title: Recipe title for context
+
+        Returns:
+            tuple: (metadata_dict, analysis_metadata)
+                - metadata_dict: Extracted metadata fields
+                - analysis_metadata: {
+                    'strategy': str,
+                    'confidence_scores': dict,
+                    'used_structural_detector': bool,
+                    'zone_count': int,
+                    'fields_extracted': list,
+                  }
+        """
+        from epub_recipe_parser.core.patterns import (
+            MetadataPatternDetector,
+            MetadataLinguisticAnalyzer,
+            MetadataStructuralDetector,
+        )
+
+        analysis_metadata = {
+            'strategy': None,
+            'confidence_scores': {},
+            'used_structural_detector': False,
+            'zone_count': 0,
+            'fields_extracted': [],
+        }
+
+        # Try structural detection first
+        zones = MetadataStructuralDetector.find_metadata_zones(soup)
+
+        if zones:
+            analysis_metadata['used_structural_detector'] = True
+            analysis_metadata['zone_count'] = len(zones)
+            analysis_metadata['strategy'] = 'structural'
+
+            # Combine text from all zones
+            combined_zone_text = " ".join([
+                zone.zone.get_text(strip=True) for zone in zones if zone.zone
+            ])
+
+            # Extract metadata with confidence from zones
+            pattern_results = MetadataPatternDetector.extract_metadata_with_confidence(
+                combined_zone_text, title
+            )
+
+            if pattern_results:
+                # Convert pattern results to legacy format
+                metadata = {}
+                for field, data in pattern_results.items():
+                    value = data['value']
+                    confidence = data['confidence']
+
+                    # Parse values using legacy parsers
+                    if field == 'servings':
+                        parsed = MetadataExtractor.parse_servings(value)
+                        if parsed:
+                            metadata['serves'] = parsed
+                            analysis_metadata['confidence_scores']['serves'] = confidence
+                    elif field == 'prep_time':
+                        parsed = MetadataExtractor.parse_time(value)
+                        if parsed is not None:
+                            metadata['prep_time'] = str(parsed)
+                            analysis_metadata['confidence_scores']['prep_time'] = confidence
+                    elif field == 'cook_time':
+                        parsed = MetadataExtractor.parse_time(value)
+                        if parsed is not None:
+                            metadata['cook_time'] = str(parsed)
+                            analysis_metadata['confidence_scores']['cook_time'] = confidence
+                    else:
+                        # Pass through other fields
+                        metadata[field] = value
+                        analysis_metadata['confidence_scores'][field] = confidence
+
+                analysis_metadata['fields_extracted'] = list(metadata.keys())
+
+                # Calculate overall linguistic score for the zones
+                if combined_zone_text:
+                    linguistic_score = MetadataLinguisticAnalyzer.calculate_metadata_score(
+                        combined_zone_text
+                    )
+                    analysis_metadata['linguistic_score'] = linguistic_score
+
+                return metadata, analysis_metadata
+
+        # Fallback to original extraction method
+        analysis_metadata['strategy'] = 'legacy'
+        metadata = MetadataExtractor.extract(soup, text, title)
+
+        # Calculate confidence for legacy extraction
+        combined_text = f"{title} {text}"
+        for field in metadata.keys():
+            # Estimate confidence based on field type
+            if field == 'serves':
+                confidence = MetadataPatternDetector.calculate_confidence(
+                    metadata[field], 'servings'
+                )
+            elif field in ('prep_time', 'cook_time'):
+                confidence = MetadataPatternDetector.calculate_confidence(
+                    metadata[field], 'time'
+                )
+            elif field == 'cooking_method':
+                confidence = MetadataPatternDetector.calculate_confidence(
+                    combined_text, 'method'
+                )
+            elif field == 'protein_type':
+                confidence = MetadataPatternDetector.calculate_confidence(
+                    combined_text, 'protein'
+                )
+            elif field == 'difficulty':
+                confidence = MetadataPatternDetector.calculate_confidence(
+                    combined_text, 'difficulty'
+                )
+            else:
+                confidence = 0.5  # Default moderate confidence
+
+            analysis_metadata['confidence_scores'][field] = confidence
+
+        analysis_metadata['fields_extracted'] = list(metadata.keys())
+
+        return metadata, analysis_metadata
