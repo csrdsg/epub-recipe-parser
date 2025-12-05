@@ -10,6 +10,11 @@ from ebooklib import epub
 from epub_recipe_parser.core.models import Recipe, ExtractorConfig
 from epub_recipe_parser.core.validator import RecipeValidator
 from epub_recipe_parser.core.quality import QualityScorer
+from epub_recipe_parser.core.protocols import (
+    IComponentExtractor,
+    IRecipeValidator,
+    IQualityScorer,
+)
 from epub_recipe_parser.extractors import (
     IngredientsExtractor,
     InstructionsExtractor,
@@ -22,16 +27,37 @@ logger = logging.getLogger(__name__)
 
 
 class EPUBRecipeExtractor:
-    """Extract recipes directly from EPUB files using HTML structure."""
+    """Extract recipes directly from EPUB files using HTML structure.
 
-    def __init__(self, config: Optional[ExtractorConfig] = None):
-        """Initialize extractor with optional configuration."""
+    Supports dependency injection for better testability and extensibility.
+    All dependencies are optional - defaults will be used if not provided.
+    """
+
+    def __init__(
+        self,
+        config: Optional[ExtractorConfig] = None,
+        validator: Optional[IRecipeValidator] = None,
+        scorer: Optional[IQualityScorer] = None,
+        ingredients_extractor: Optional[IComponentExtractor] = None,
+        instructions_extractor: Optional[IComponentExtractor] = None,
+        metadata_extractor: Optional[IComponentExtractor] = None,
+    ):
+        """Initialize extractor with optional configuration and dependencies.
+
+        Args:
+            config: Extraction configuration
+            validator: Recipe validator (defaults to RecipeValidator)
+            scorer: Quality scorer (defaults to QualityScorer)
+            ingredients_extractor: Ingredients extractor (defaults to IngredientsExtractor)
+            instructions_extractor: Instructions extractor (defaults to InstructionsExtractor)
+            metadata_extractor: Metadata extractor (defaults to MetadataExtractor)
+        """
         self.config = config or ExtractorConfig()
-        self.validator = RecipeValidator()
-        self.scorer = QualityScorer()
-        self.ingredients_extractor = IngredientsExtractor()
-        self.instructions_extractor = InstructionsExtractor()
-        self.metadata_extractor = MetadataExtractor()
+        self.validator = validator or RecipeValidator()
+        self.scorer = scorer or QualityScorer()
+        self.ingredients_extractor = ingredients_extractor or IngredientsExtractor()
+        self.instructions_extractor = instructions_extractor or InstructionsExtractor()
+        self.metadata_extractor = metadata_extractor or MetadataExtractor()
 
     def extract_from_epub(self, epub_path: str | Path) -> List[Recipe]:
         """Extract all recipes from an EPUB file with proper error handling.
