@@ -481,3 +481,263 @@ class MetadataLinguisticAnalyzer:
             return 1.0 - ((narrative_ratio - 0.1) / 0.2)
         else:
             return 0.0
+
+
+class IngredientLinguisticAnalyzer:
+    """Performs linguistic analysis specifically for ingredient text.
+
+    This analyzer complements IngredientPatternDetector by focusing on
+    linguistic quality indicators for recipe ingredients.
+    """
+
+    # Ingredient-specific descriptors and modifiers
+    INGREDIENT_DESCRIPTORS = {
+        "fresh", "dried", "frozen", "canned", "fresh-squeezed",
+        "chopped", "diced", "minced", "sliced", "grated", "shredded",
+        "peeled", "crushed", "ground", "whole", "halved", "quartered",
+        "large", "medium", "small", "jumbo", "extra-large",
+        "ripe", "unripe", "tender", "crisp", "firm", "soft",
+        "organic", "kosher", "sea", "extra-virgin",
+        "unsalted", "salted", "sweetened", "unsweetened"
+    }
+
+    # Common ingredient nouns
+    INGREDIENT_NOUNS = {
+        "salt", "pepper", "oil", "butter", "flour", "sugar", "egg", "eggs",
+        "milk", "water", "cream", "cheese", "onion", "garlic", "chicken",
+        "beef", "pork", "fish", "tomato", "potato", "carrot", "lemon", "lime"
+    }
+
+    # Measurement indicators (positive for ingredients)
+    MEASUREMENT_WORDS = {
+        "cup", "cups", "tablespoon", "tbsp", "teaspoon", "tsp",
+        "ounce", "oz", "pound", "lb", "gram", "g", "kilogram", "kg",
+        "pinch", "dash", "clove", "piece"
+    }
+
+    # Cooking verbs (negative for ingredients)
+    COOKING_VERBS = {
+        "preheat", "heat", "cook", "bake", "roast", "fry", "grill",
+        "mix", "stir", "combine", "whisk", "beat", "fold",
+        "bring", "remove", "transfer", "pour", "serve"
+    }
+
+    # Pre-compiled patterns
+    LIST_MARKER_PATTERN = re.compile(r'^[\s•\-*·○●]\s*|\d+\.\s*')
+
+    @staticmethod
+    def calculate_ingredient_score(text: str) -> float:
+        """Calculate linguistic quality score for ingredient text.
+
+        This score measures how well the text exhibits linguistic patterns
+        typical of ingredient lists (measurements, descriptors, concise format).
+
+        Args:
+            text: Text to analyze
+
+        Returns:
+            Linguistic score between 0.0 and 1.0
+
+        Examples:
+            >>> text = "2 cups flour\\n1 tsp salt\\n3 large eggs, beaten"
+            >>> IngredientLinguisticAnalyzer.calculate_ingredient_score(text)
+            0.88
+
+            >>> text = "Preheat oven to 350°F. Mix all ingredients together."
+            >>> IngredientLinguisticAnalyzer.calculate_ingredient_score(text)
+            0.18
+        """
+        if not text or len(text.strip()) < 10:
+            return 0.0
+
+        text_lower = text.lower()
+        lines = [line.strip() for line in text.split("\n") if line.strip()]
+
+        if not lines:
+            return 0.0
+
+        score = 0.0
+
+        # Component 1: Descriptor presence (30% weight)
+        descriptor_score = IngredientLinguisticAnalyzer._calculate_descriptor_score(text_lower)
+        score += descriptor_score * 0.30
+
+        # Component 2: Measurement word presence (25% weight)
+        measurement_score = IngredientLinguisticAnalyzer._calculate_measurement_presence(text_lower)
+        score += measurement_score * 0.25
+
+        # Component 3: Line structure quality (20% weight)
+        structure_score = IngredientLinguisticAnalyzer._analyze_line_structure(lines)
+        score += structure_score * 0.20
+
+        # Component 4: Ingredient noun presence (15% weight)
+        noun_score = IngredientLinguisticAnalyzer._calculate_noun_presence(text_lower)
+        score += noun_score * 0.15
+
+        # Component 5: Absence of cooking verbs (10% weight)
+        verb_score = IngredientLinguisticAnalyzer._check_verb_absence(text_lower)
+        score += verb_score * 0.10
+
+        return max(0.0, min(score, 1.0))
+
+    @staticmethod
+    def _calculate_descriptor_score(text: str) -> float:
+        """Calculate ingredient descriptor presence score.
+
+        Args:
+            text: Lowercase text
+
+        Returns:
+            Score 0.0-1.0 based on descriptor frequency
+        """
+        words = text.split()
+        if not words:
+            return 0.0
+
+        descriptor_count = sum(
+            1 for word in words
+            if word.rstrip(',.;:!?') in IngredientLinguisticAnalyzer.INGREDIENT_DESCRIPTORS
+        )
+
+        # Calculate descriptor frequency per 20 words
+        descriptor_frequency = (descriptor_count / len(words)) * 20
+
+        # Optimal range: 1-4 descriptors per 20 words
+        if 1 <= descriptor_frequency <= 4:
+            return 1.0
+        elif descriptor_frequency < 1:
+            return descriptor_frequency
+        elif 4 < descriptor_frequency <= 6:
+            return 1.0 - ((descriptor_frequency - 4) / 4.0)
+        else:
+            return 0.0
+
+    @staticmethod
+    def _calculate_measurement_presence(text: str) -> float:
+        """Calculate measurement word presence score.
+
+        Args:
+            text: Lowercase text
+
+        Returns:
+            Score 0.0-1.0 based on measurement word presence
+        """
+        words = text.split()
+        if not words:
+            return 0.0
+
+        measurement_count = sum(
+            1 for word in words
+            if word.rstrip(',.;:!?s') in IngredientLinguisticAnalyzer.MEASUREMENT_WORDS
+        )
+
+        # Calculate measurement frequency per 10 words
+        measurement_frequency = (measurement_count / len(words)) * 10
+
+        # Optimal range: 0.5-3 measurements per 10 words
+        if 0.5 <= measurement_frequency <= 3:
+            return 1.0
+        elif measurement_frequency < 0.5:
+            return measurement_frequency / 0.5
+        elif 3 < measurement_frequency <= 5:
+            return 1.0 - ((measurement_frequency - 3) / 4.0)
+        else:
+            return 0.0
+
+    @staticmethod
+    def _analyze_line_structure(lines: list) -> float:
+        """Analyze ingredient line structure quality.
+
+        Ingredients typically have:
+        - Short to medium lines (20-100 chars)
+        - Consistent length across lines
+        - List markers
+
+        Args:
+            lines: List of text lines
+
+        Returns:
+            Score 0.0-1.0 based on line structure
+        """
+        if not lines:
+            return 0.0
+
+        score = 0.0
+
+        # Check line length distribution
+        ideal_length_count = sum(1 for line in lines if 20 <= len(line) <= 100)
+        length_ratio = ideal_length_count / len(lines)
+        score += length_ratio * 0.4
+
+        # Check for list markers
+        marker_count = sum(
+            1 for line in lines
+            if IngredientLinguisticAnalyzer.LIST_MARKER_PATTERN.match(line)
+        )
+        marker_ratio = marker_count / len(lines)
+        score += marker_ratio * 0.3
+
+        # Check line count (ingredients usually 3+ items)
+        if len(lines) >= 3:
+            score += 0.3
+        elif len(lines) == 2:
+            score += 0.15
+
+        return min(score, 1.0)
+
+    @staticmethod
+    def _calculate_noun_presence(text: str) -> float:
+        """Calculate ingredient noun presence score.
+
+        Args:
+            text: Lowercase text
+
+        Returns:
+            Score 0.0-1.0 based on ingredient noun presence
+        """
+        words = text.split()
+        if not words:
+            return 0.0
+
+        noun_count = sum(
+            1 for noun in IngredientLinguisticAnalyzer.INGREDIENT_NOUNS
+            if noun in text
+        )
+
+        # Normalize by text length
+        # More nouns per 100 chars = higher score
+        density = (noun_count / len(text)) * 100
+
+        if density >= 2.0:
+            return 1.0
+        elif density >= 1.0:
+            return 0.75
+        elif density >= 0.5:
+            return 0.50
+        else:
+            return density
+
+    @staticmethod
+    def _check_verb_absence(text: str) -> float:
+        """Check for absence of cooking verbs (indicator it's NOT instructions).
+
+        Args:
+            text: Lowercase text
+
+        Returns:
+            Score 0.0-1.0 (higher = fewer cooking verbs)
+        """
+        verb_count = sum(
+            1 for verb in IngredientLinguisticAnalyzer.COOKING_VERBS
+            if f" {verb} " in f" {text} "  # Word boundary check
+        )
+
+        # Ingredients should have minimal cooking verbs
+        if verb_count == 0:
+            return 1.0
+        elif verb_count == 1:
+            return 0.6
+        elif verb_count == 2:
+            return 0.3
+        else:
+            return 0.0

@@ -175,71 +175,109 @@ class IngredientsExtractor:
     def extract_with_patterns(
         soup: BeautifulSoup, text: str
     ) -> tuple[Optional[str], dict]:
-        """Extract ingredients using new patterns module with confidence scoring.
+        """Extract ingredients using pattern-based detection with confidence scoring.
+
+        Uses multi-dimensional extraction strategy:
+        1. Structural Detection (HTML zones) - 30% weight
+        2. Pattern Matching (measurements, nouns) - 50% weight
+        3. Linguistic Analysis (text quality) - 20% weight
 
         Returns:
-            tuple: (ingredients_text, metadata_dict)
+            tuple: (ingredients_text, analysis_metadata)
                 - ingredients_text: Extracted ingredients or None
-                - metadata_dict: {
-                    'strategy': str,
-                    'confidence': float,
-                    'linguistic_score': float,
-                    'used_structural_detector': bool
+                - analysis_metadata: {
+                    'strategy': str,  # Detection strategy used
+                    'confidence': float,  # Pattern confidence 0.0-1.0
+                    'linguistic_score': float,  # Linguistic quality 0.0-1.0
+                    'used_structural_detector': bool,
+                    'zone_count': int,  # Number of HTML zones found
+                    'combined_score': float  # Weighted combination
                   }
         """
         from epub_recipe_parser.core.patterns import (
             IngredientPatternDetector,
-            LinguisticAnalyzer,
-            StructuralDetector,
+            IngredientLinguisticAnalyzer,
+            IngredientStructuralDetector,
         )
 
         metadata = {
             "strategy": None,
             "confidence": 0.0,
             "linguistic_score": 0.0,
+            "structural_confidence": 0.0,
             "used_structural_detector": False,
+            "zone_count": 0,
+            "combined_score": 0.0,
         }
 
-        # Try StructuralDetector first
-        logger.debug("Patterns: Trying StructuralDetector.find_ingredient_zones()")
-        zones = StructuralDetector.find_ingredient_zones(soup)
+        # Try IngredientStructuralDetector first
+        logger.debug("Patterns: Trying IngredientStructuralDetector.find_ingredient_zones()")
+        zones = IngredientStructuralDetector.find_ingredient_zones(soup)
+
         if zones:
             metadata["used_structural_detector"] = True
-            # Extract text from zones
-            ingredients_text = "\n".join(zone.get_text(strip=True) for zone in zones)
-            if len(ingredients_text) > 50:
-                confidence = IngredientPatternDetector.calculate_confidence(
-                    ingredients_text
-                )
-                linguistic = LinguisticAnalyzer.calculate_linguistic_score(
-                    ingredients_text
-                )
-                metadata["strategy"] = "structural_detector"
-                metadata["confidence"] = confidence
-                metadata["linguistic_score"] = linguistic
+            metadata["zone_count"] = len(zones)
 
-                if confidence >= 0.5:
+            # Use highest confidence zone
+            best_zone = zones[0]  # Already sorted by confidence
+            metadata["structural_confidence"] = best_zone.confidence
+
+            # Extract text from zone
+            ingredients_text = best_zone.get_text()
+
+            if len(ingredients_text) > 50:
+                # Calculate pattern and linguistic scores
+                pattern_confidence = IngredientPatternDetector.calculate_confidence(
+                    ingredients_text
+                )
+                linguistic_score = IngredientLinguisticAnalyzer.calculate_ingredient_score(
+                    ingredients_text
+                )
+
+                # Combined score: Structural 30% + Pattern 50% + Linguistic 20%
+                combined = (
+                    (best_zone.confidence * 0.30) +
+                    (pattern_confidence * 0.50) +
+                    (linguistic_score * 0.20)
+                )
+
+                metadata["strategy"] = "structural_zones"
+                metadata["confidence"] = pattern_confidence
+                metadata["linguistic_score"] = linguistic_score
+                metadata["combined_score"] = combined
+                metadata["detection_method"] = best_zone.detection_method
+
+                # Use combined score for threshold
+                if combined >= 0.5:
                     logger.info(
-                        f"Patterns SUCCESS: Structural detector (confidence={confidence:.2f})"
+                        f"Patterns SUCCESS: Structural zones (combined={combined:.2f}, "
+                        f"method={best_zone.detection_method}, zones={len(zones)})"
                     )
                     return ingredients_text, metadata
                 else:
                     logger.debug(
-                        f"Patterns: Structural detector found zones but low confidence ({confidence:.2f})"
+                        f"Patterns: Structural zones found but low combined score ({combined:.2f})"
                     )
 
-        # Fall back to original strategies with confidence augmentation
-        logger.debug("Patterns: Falling back to original extraction with augmentation")
+        # Fall back to original extraction with pattern augmentation
+        logger.debug("Patterns: Falling back to original extraction with pattern augmentation")
         ingredients = IngredientsExtractor.extract(soup, text)
 
         if ingredients:
-            confidence = IngredientPatternDetector.calculate_confidence(ingredients)
-            linguistic = LinguisticAnalyzer.calculate_linguistic_score(ingredients)
+            pattern_confidence = IngredientPatternDetector.calculate_confidence(ingredients)
+            linguistic_score = IngredientLinguisticAnalyzer.calculate_ingredient_score(ingredients)
+
+            # Combined score for fallback (no structural component)
+            combined = (pattern_confidence * 0.70) + (linguistic_score * 0.30)
+
             metadata["strategy"] = "original_with_patterns"
-            metadata["confidence"] = confidence
-            metadata["linguistic_score"] = linguistic
+            metadata["confidence"] = pattern_confidence
+            metadata["linguistic_score"] = linguistic_score
+            metadata["combined_score"] = combined
+
             logger.info(
-                f"Patterns SUCCESS: Original method enhanced (confidence={confidence:.2f})"
+                f"Patterns SUCCESS: Original method enhanced "
+                f"(pattern={pattern_confidence:.2f}, linguistic={linguistic_score:.2f}, combined={combined:.2f})"
             )
             return ingredients, metadata
 
