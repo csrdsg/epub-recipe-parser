@@ -26,6 +26,9 @@ class InstructionPatternDetector:
         "boil", "melt", "spread", "drain", "toss", "sauté", "chop", "slice"
     }
 
+    # Pre-compiled regex patterns for performance
+    SENTENCE_SPLIT_PATTERN = re.compile(r'[.!?]+')
+
     @classmethod
     def calculate_confidence(cls, text: str) -> float:
         """Calculate confidence that text contains instructions.
@@ -151,7 +154,7 @@ class InstructionPatternDetector:
         Returns:
             Score 0.0-1.0 based on imperative pattern presence
         """
-        sentences = re.split(r'[.!?]+', text)
+        sentences = cls.SENTENCE_SPLIT_PATTERN.split(text)
         sentences = [s.strip() for s in sentences if s.strip()]
 
         if not sentences:

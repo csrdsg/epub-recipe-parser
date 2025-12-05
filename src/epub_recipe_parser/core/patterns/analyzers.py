@@ -115,6 +115,9 @@ class InstructionLinguisticAnalyzer:
         "serving suggestion", "storage", "make ahead", "chef's note"
     }
 
+    # Pre-compiled regex patterns for performance
+    SENTENCE_SPLIT_PATTERN = re.compile(r'[.!?]+')
+
     @staticmethod
     def calculate_instruction_score(text: str) -> float:
         """Calculate linguistic quality score for instruction text.
@@ -233,7 +236,7 @@ class InstructionLinguisticAnalyzer:
         Returns:
             Score 0.0-1.0 based on sentence structure
         """
-        sentences = re.split(r'[.!?]+', text)
+        sentences = InstructionLinguisticAnalyzer.SENTENCE_SPLIT_PATTERN.split(text)
         sentences = [s.strip() for s in sentences if s.strip()]
 
         if not sentences:

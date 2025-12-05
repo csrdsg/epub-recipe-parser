@@ -559,6 +559,11 @@ class InstructionsExtractor:
             best_combined_confidence = 0.0
 
             for zone in zones:
+                # Safety check: ensure zone and zone.zone are not None
+                if not zone or not zone.zone:
+                    logger.debug("Skipping None zone")
+                    continue
+
                 zone_text = zone.zone.get_text(strip=True)
 
                 # Skip very short zones
