@@ -1,195 +1,457 @@
 #!/usr/bin/env python3
-"""Benchmark script to measure EPUB processing performance."""
+"""Performance benchmarking for old vs new extraction methods.
+
+Compares execution time and extraction quality between legacy and pattern-based methods.
+"""
 
 import time
 import sys
 from pathlib import Path
-from typing import Dict, Any
-import cProfile
-import pstats
-import io
+from typing import Dict, Any, List, Tuple
+from dataclasses import dataclass
+from bs4 import BeautifulSoup
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent / "src"))
-
-from epub_recipe_parser.core import EPUBRecipeExtractor, ExtractorConfig
-
-
-def profile_extraction(epub_path: Path) -> Dict[str, Any]:
-    """Profile a single EPUB extraction."""
-    # Create profiler
-    profiler = cProfile.Profile()
-
-    # Time the extraction
-    start_time = time.perf_counter()
-
-    # Profile the extraction
-    profiler.enable()
-    config = ExtractorConfig(min_quality_score=20)
-    extractor = EPUBRecipeExtractor(config=config)
-    recipes = extractor.extract_from_epub(epub_path)
-    profiler.disable()
-
-    end_time = time.perf_counter()
-    elapsed = end_time - start_time
-
-    # Get profiling stats
-    s = io.StringIO()
-    ps = pstats.Stats(profiler, stream=s).sort_stats("cumulative")
-    ps.print_stats(20)  # Top 20 functions
-
-    return {
-        "epub_file": epub_path.name,
-        "recipes_extracted": len(recipes),
-        "elapsed_time": elapsed,
-        "recipes_per_second": len(recipes) / elapsed if elapsed > 0 else 0,
-        "profiling_stats": s.getvalue(),
-    }
+from epub_recipe_parser.core.extractor import EPUBRecipeExtractor
+from epub_recipe_parser.core.models import ExtractorConfig
+from epub_recipe_parser.extractors.ingredients import IngredientsExtractor
+from epub_recipe_parser.extractors.instructions import InstructionsExtractor
+from epub_recipe_parser.extractors.metadata import MetadataExtractor
 
 
-def benchmark_single_file(epub_path: Path, runs: int = 3) -> None:
-    """Benchmark a single EPUB file multiple times."""
-    print(f"\n{'='*80}")
-    print(f"BENCHMARKING: {epub_path.name}")
-    print(f"{'='*80}\n")
-
-    if not epub_path.exists():
-        print(f"ERROR: File not found: {epub_path}")
-        return
-
-    results = []
-    for i in range(runs):
-        print(f"Run {i+1}/{runs}...")
-        result = profile_extraction(epub_path)
-        results.append(result)
-        print(f"  Time: {result['elapsed_time']:.2f}s, Recipes: {result['recipes_extracted']}")
-
-    # Calculate statistics
-    times = [r["elapsed_time"] for r in results]
-    avg_time = sum(times) / len(times)
-    min_time = min(times)
-    max_time = max(times)
-
-    recipes = results[0]["recipes_extracted"]
-
-    print(f"\n{'='*80}")
-    print("RESULTS")
-    print(f"{'='*80}")
-    print(f"Recipes extracted: {recipes}")
-    print(f"Average time: {avg_time:.2f}s")
-    print(f"Min time: {min_time:.2f}s")
-    print(f"Max time: {max_time:.2f}s")
-    print(f"Throughput: {recipes/avg_time:.2f} recipes/second")
-
-    # Show profiling stats from first run
-    print(f"\n{'='*80}")
-    print("PROFILING (Top 20 functions by cumulative time)")
-    print(f"{'='*80}")
-    print(results[0]["profiling_stats"])
+@dataclass
+class BenchmarkResult:
+    """Results from a single benchmark run."""
+    method: str
+    component: str
+    execution_time: float
+    success_count: int
+    total_count: int
+    avg_confidence: float = 0.0
+    avg_linguistic_score: float = 0.0
+    avg_combined_score: float = 0.0
 
 
-def benchmark_batch(directory: Path) -> None:
-    """Benchmark batch processing of multiple EPUB files."""
-    epub_files = list(directory.glob("*.epub"))
+class PerformanceBenchmark:
+    """Benchmarks extraction performance."""
 
-    if not epub_files:
-        print(f"No EPUB files found in {directory}")
-        return
+    def __init__(self, epub_path: str):
+        self.epub_path = epub_path
+        self.results: List[BenchmarkResult] = []
 
-    print(f"\n{'='*80}")
-    print(f"BATCH BENCHMARK: {len(epub_files)} files in {directory}")
-    print(f"{'='*80}\n")
+    def benchmark_ingredients(self, iterations: int = 3) -> Tuple[BenchmarkResult, BenchmarkResult]:
+        """Benchmark ingredient extraction."""
+        print("\n" + "=" * 70)
+        print("Benchmarking Ingredient Extraction")
+        print("=" * 70)
 
-    # Sequential processing (current implementation)
-    print("Processing files sequentially (current implementation)...")
-    start_time = time.perf_counter()
+        # Load EPUB once
+        from ebooklib import epub
+        book = epub.read_epub(self.epub_path)
+        html_docs = [
+            item for item in book.get_items()
+            if item.get_type() == 9  # ITEM_DOCUMENT
+        ]
 
-    config = ExtractorConfig(min_quality_score=20)
-    extractor = EPUBRecipeExtractor(config=config)
+        # Prepare test sections
+        test_sections = []
+        for doc in html_docs[:50]:  # Test first 50 documents
+            html_content = doc.get_content().decode('utf-8', errors='ignore')
+            soup = BeautifulSoup(html_content, 'html.parser')
+            text = soup.get_text()
+            test_sections.append((soup, text))
 
-    total_recipes = 0
-    for epub_file in epub_files:
-        recipes = extractor.extract_from_epub(epub_file)
-        total_recipes += len(recipes)
+        print(f"Testing with {len(test_sections)} HTML sections")
+        print(f"Running {iterations} iterations per method...\n")
 
-    end_time = time.perf_counter()
-    elapsed = end_time - start_time
+        # Benchmark legacy method
+        print("[1/2] Benchmarking legacy extract()...")
+        legacy_times = []
+        legacy_successes = 0
 
-    print(f"\n{'='*80}")
-    print("BATCH RESULTS")
-    print(f"{'='*80}")
-    print(f"Files processed: {len(epub_files)}")
-    print(f"Total recipes: {total_recipes}")
-    print(f"Total time: {elapsed:.2f}s")
-    print(f"Average per file: {elapsed/len(epub_files):.2f}s")
-    print(f"Throughput: {total_recipes/elapsed:.2f} recipes/second")
+        for i in range(iterations):
+            start = time.perf_counter()
+            for soup, text in test_sections:
+                result = IngredientsExtractor.extract(soup, text)
+                if result:
+                    legacy_successes += 1
+            end = time.perf_counter()
+            legacy_times.append(end - start)
+            print(f"  Iteration {i+1}: {legacy_times[-1]:.3f}s")
 
+        legacy_avg = sum(legacy_times) / len(legacy_times)
+        legacy_success_rate = legacy_successes / (len(test_sections) * iterations)
 
-def analyze_bottlenecks(epub_path: Path) -> None:
-    """Detailed analysis of bottlenecks in the extraction process."""
-    print(f"\n{'='*80}")
-    print(f"BOTTLENECK ANALYSIS: {epub_path.name}")
-    print(f"{'='*80}\n")
+        # Benchmark pattern-based method
+        print("\n[2/2] Benchmarking pattern-based extract_with_patterns()...")
+        pattern_times = []
+        pattern_successes = 0
+        confidences = []
+        linguistic_scores = []
+        combined_scores = []
 
-    if not epub_path.exists():
-        print(f"ERROR: File not found: {epub_path}")
-        return
+        for i in range(iterations):
+            start = time.perf_counter()
+            for soup, text in test_sections:
+                result, analysis = IngredientsExtractor.extract_with_patterns(soup, text)
+                if result:
+                    pattern_successes += 1
+                    confidences.append(analysis.get('confidence', 0.0))
+                    linguistic_scores.append(analysis.get('linguistic_score', 0.0))
+                    combined_scores.append(analysis.get('combined_score', 0.0))
+            end = time.perf_counter()
+            pattern_times.append(end - start)
+            print(f"  Iteration {i+1}: {pattern_times[-1]:.3f}s")
 
-    # Profile with detailed stats
-    profiler = cProfile.Profile()
+        pattern_avg = sum(pattern_times) / len(pattern_times)
+        pattern_success_rate = pattern_successes / (len(test_sections) * iterations)
 
-    config = ExtractorConfig(min_quality_score=20)
-    extractor = EPUBRecipeExtractor(config=config)
+        # Calculate statistics
+        avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+        avg_linguistic = sum(linguistic_scores) / len(linguistic_scores) if linguistic_scores else 0.0
+        avg_combined = sum(combined_scores) / len(combined_scores) if combined_scores else 0.0
 
-    profiler.enable()
-    recipes = extractor.extract_from_epub(epub_path)
-    profiler.disable()
+        # Create results
+        legacy_result = BenchmarkResult(
+            method="legacy",
+            component="ingredients",
+            execution_time=legacy_avg,
+            success_count=int(legacy_successes / iterations),
+            total_count=len(test_sections)
+        )
 
-    # Detailed stats
-    s = io.StringIO()
-    ps = pstats.Stats(profiler, stream=s)
+        pattern_result = BenchmarkResult(
+            method="pattern",
+            component="ingredients",
+            execution_time=pattern_avg,
+            success_count=int(pattern_successes / iterations),
+            total_count=len(test_sections),
+            avg_confidence=avg_confidence,
+            avg_linguistic_score=avg_linguistic,
+            avg_combined_score=avg_combined
+        )
 
-    print("Top 30 functions by cumulative time:")
-    print("-" * 80)
-    ps.sort_stats("cumulative").print_stats(30)
+        # Report results
+        print("\n" + "-" * 70)
+        print("Results:")
+        print("-" * 70)
+        print(f"Legacy extract():")
+        print(f"  Avg time: {legacy_avg:.3f}s")
+        print(f"  Success rate: {legacy_success_rate:.1%}")
+        print(f"  Successes: {legacy_result.success_count}/{legacy_result.total_count}")
 
-    print("\n" + "=" * 80)
-    print("Top 30 functions by total time:")
-    print("-" * 80)
-    ps.sort_stats("tottime").print_stats(30)
+        print(f"\nPattern-based extract_with_patterns():")
+        print(f"  Avg time: {pattern_avg:.3f}s")
+        print(f"  Success rate: {pattern_success_rate:.1%}")
+        print(f"  Successes: {pattern_result.success_count}/{pattern_result.total_count}")
+        print(f"  Avg confidence: {avg_confidence:.2f}")
+        print(f"  Avg linguistic: {avg_linguistic:.2f}")
+        print(f"  Avg combined: {avg_combined:.2f}")
 
-    print(f"\nTotal recipes extracted: {len(recipes)}")
+        # Performance comparison
+        speedup = legacy_avg / pattern_avg if pattern_avg > 0 else 0
+        overhead = ((pattern_avg - legacy_avg) / legacy_avg * 100) if legacy_avg > 0 else 0
 
-
-def main():
-    """Main benchmark runner."""
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Benchmark EPUB Recipe Parser")
-    parser.add_argument("path", help="EPUB file or directory to benchmark")
-    parser.add_argument("--runs", type=int, default=3, help="Number of runs for single file")
-    parser.add_argument("--batch", action="store_true", help="Run batch benchmark")
-    parser.add_argument("--analyze", action="store_true", help="Run detailed bottleneck analysis")
-
-    args = parser.parse_args()
-
-    path = Path(args.path)
-
-    if not path.exists():
-        print(f"ERROR: Path not found: {path}")
-        sys.exit(1)
-
-    if args.analyze:
-        if path.is_file():
-            analyze_bottlenecks(path)
+        print(f"\nPerformance comparison:")
+        if speedup > 1:
+            print(f"  Pattern method is {speedup:.2f}x FASTER")
         else:
-            print("ERROR: --analyze requires a single EPUB file")
-            sys.exit(1)
-    elif args.batch or path.is_dir():
-        benchmark_batch(path)
-    else:
-        benchmark_single_file(path, runs=args.runs)
+            print(f"  Pattern method has {overhead:+.1f}% overhead")
+
+        self.results.extend([legacy_result, pattern_result])
+        return legacy_result, pattern_result
+
+    def benchmark_instructions(self, iterations: int = 3) -> Tuple[BenchmarkResult, BenchmarkResult]:
+        """Benchmark instruction extraction."""
+        print("\n" + "=" * 70)
+        print("Benchmarking Instruction Extraction")
+        print("=" * 70)
+
+        # Load EPUB once
+        from ebooklib import epub
+        book = epub.read_epub(self.epub_path)
+        html_docs = [
+            item for item in book.get_items()
+            if item.get_type() == 9  # ITEM_DOCUMENT
+        ]
+
+        # Prepare test sections
+        test_sections = []
+        for doc in html_docs[:50]:  # Test first 50 documents
+            html_content = doc.get_content().decode('utf-8', errors='ignore')
+            soup = BeautifulSoup(html_content, 'html.parser')
+            text = soup.get_text()
+            test_sections.append((soup, text))
+
+        print(f"Testing with {len(test_sections)} HTML sections")
+        print(f"Running {iterations} iterations per method...\n")
+
+        # Benchmark legacy method
+        print("[1/2] Benchmarking legacy extract()...")
+        legacy_times = []
+        legacy_successes = 0
+
+        for i in range(iterations):
+            start = time.perf_counter()
+            for soup, text in test_sections:
+                result = InstructionsExtractor.extract(soup, text)
+                if result:
+                    legacy_successes += 1
+            end = time.perf_counter()
+            legacy_times.append(end - start)
+            print(f"  Iteration {i+1}: {legacy_times[-1]:.3f}s")
+
+        legacy_avg = sum(legacy_times) / len(legacy_times)
+
+        # Benchmark pattern-based method
+        print("\n[2/2] Benchmarking pattern-based extract_with_patterns()...")
+        pattern_times = []
+        pattern_successes = 0
+        confidences = []
+        linguistic_scores = []
+
+        for i in range(iterations):
+            start = time.perf_counter()
+            for soup, text in test_sections:
+                result, analysis = InstructionsExtractor.extract_with_patterns(soup, text)
+                if result:
+                    pattern_successes += 1
+                    confidences.append(analysis.get('confidence', 0.0))
+                    linguistic_scores.append(analysis.get('linguistic_score', 0.0))
+            end = time.perf_counter()
+            pattern_times.append(end - start)
+            print(f"  Iteration {i+1}: {pattern_times[-1]:.3f}s")
+
+        pattern_avg = sum(pattern_times) / len(pattern_times)
+
+        # Calculate statistics
+        avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+        avg_linguistic = sum(linguistic_scores) / len(linguistic_scores) if linguistic_scores else 0.0
+
+        # Create results
+        legacy_result = BenchmarkResult(
+            method="legacy",
+            component="instructions",
+            execution_time=legacy_avg,
+            success_count=int(legacy_successes / iterations),
+            total_count=len(test_sections)
+        )
+
+        pattern_result = BenchmarkResult(
+            method="pattern",
+            component="instructions",
+            execution_time=pattern_avg,
+            success_count=int(pattern_successes / iterations),
+            total_count=len(test_sections),
+            avg_confidence=avg_confidence,
+            avg_linguistic_score=avg_linguistic
+        )
+
+        # Report results
+        print("\n" + "-" * 70)
+        print("Results:")
+        print("-" * 70)
+        print(f"Legacy extract(): {legacy_avg:.3f}s")
+        print(f"Pattern-based extract_with_patterns(): {pattern_avg:.3f}s")
+
+        speedup = legacy_avg / pattern_avg if pattern_avg > 0 else 0
+        overhead = ((pattern_avg - legacy_avg) / legacy_avg * 100) if legacy_avg > 0 else 0
+
+        print(f"\nPerformance comparison:")
+        if speedup > 1:
+            print(f"  Pattern method is {speedup:.2f}x FASTER")
+        else:
+            print(f"  Pattern method has {overhead:+.1f}% overhead")
+
+        self.results.extend([legacy_result, pattern_result])
+        return legacy_result, pattern_result
+
+    def benchmark_metadata(self, iterations: int = 3) -> Tuple[BenchmarkResult, BenchmarkResult]:
+        """Benchmark metadata extraction."""
+        print("\n" + "=" * 70)
+        print("Benchmarking Metadata Extraction")
+        print("=" * 70)
+
+        # Load EPUB once
+        from ebooklib import epub
+        book = epub.read_epub(self.epub_path)
+        html_docs = [
+            item for item in book.get_items()
+            if item.get_type() == 9  # ITEM_DOCUMENT
+        ]
+
+        # Prepare test sections
+        test_sections = []
+        test_titles = []
+        for doc in html_docs[:50]:  # Test first 50 documents
+            html_content = doc.get_content().decode('utf-8', errors='ignore')
+            soup = BeautifulSoup(html_content, 'html.parser')
+            text = soup.get_text()
+            # Extract a title for metadata extraction
+            title_elem = soup.find(['h1', 'h2', 'h3'])
+            title = title_elem.get_text(strip=True) if title_elem else "Recipe"
+            test_sections.append((soup, text))
+            test_titles.append(title)
+
+        print(f"Testing with {len(test_sections)} HTML sections")
+        print(f"Running {iterations} iterations per method...\n")
+
+        # Benchmark legacy method
+        print("[1/2] Benchmarking legacy extract()...")
+        legacy_times = []
+        legacy_field_counts = []
+
+        for i in range(iterations):
+            start = time.perf_counter()
+            for (soup, text), title in zip(test_sections, test_titles):
+                result = MetadataExtractor.extract(soup, text, title)
+                legacy_field_counts.append(len(result))
+            end = time.perf_counter()
+            legacy_times.append(end - start)
+            print(f"  Iteration {i+1}: {legacy_times[-1]:.3f}s")
+
+        legacy_avg = sum(legacy_times) / len(legacy_times)
+        avg_legacy_fields = sum(legacy_field_counts) / len(legacy_field_counts)
+
+        # Benchmark pattern-based method
+        print("\n[2/2] Benchmarking pattern-based extract_with_patterns()...")
+        pattern_times = []
+        pattern_field_counts = []
+        confidences = []
+
+        for i in range(iterations):
+            start = time.perf_counter()
+            for (soup, text), title in zip(test_sections, test_titles):
+                result, analysis = MetadataExtractor.extract_with_patterns(soup, text, title)
+                pattern_field_counts.append(len(result))
+                # Average confidence across fields
+                field_confidences = analysis.get('confidence_scores', {}).values()
+                if field_confidences:
+                    confidences.append(sum(field_confidences) / len(field_confidences))
+            end = time.perf_counter()
+            pattern_times.append(end - start)
+            print(f"  Iteration {i+1}: {pattern_times[-1]:.3f}s")
+
+        pattern_avg = sum(pattern_times) / len(pattern_times)
+        avg_pattern_fields = sum(pattern_field_counts) / len(pattern_field_counts)
+        avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+
+        # Create results
+        legacy_result = BenchmarkResult(
+            method="legacy",
+            component="metadata",
+            execution_time=legacy_avg,
+            success_count=int(avg_legacy_fields),
+            total_count=len(test_sections)
+        )
+
+        pattern_result = BenchmarkResult(
+            method="pattern",
+            component="metadata",
+            execution_time=pattern_avg,
+            success_count=int(avg_pattern_fields),
+            total_count=len(test_sections),
+            avg_confidence=avg_confidence
+        )
+
+        # Report results
+        print("\n" + "-" * 70)
+        print("Results:")
+        print("-" * 70)
+        print(f"Legacy extract(): {legacy_avg:.3f}s (avg {avg_legacy_fields:.1f} fields)")
+        print(f"Pattern-based extract_with_patterns(): {pattern_avg:.3f}s (avg {avg_pattern_fields:.1f} fields)")
+        print(f"  Avg confidence: {avg_confidence:.2f}")
+
+        speedup = legacy_avg / pattern_avg if pattern_avg > 0 else 0
+        overhead = ((pattern_avg - legacy_avg) / legacy_avg * 100) if legacy_avg > 0 else 0
+
+        print(f"\nPerformance comparison:")
+        if speedup > 1:
+            print(f"  Pattern method is {speedup:.2f}x FASTER")
+        else:
+            print(f"  Pattern method has {overhead:+.1f}% overhead")
+
+        self.results.extend([legacy_result, pattern_result])
+        return legacy_result, pattern_result
+
+    def print_summary(self):
+        """Print overall benchmark summary."""
+        print("\n" + "=" * 70)
+        print("OVERALL BENCHMARK SUMMARY")
+        print("=" * 70)
+
+        # Group by component
+        components = {}
+        for result in self.results:
+            if result.component not in components:
+                components[result.component] = {}
+            components[result.component][result.method] = result
+
+        for component, methods in components.items():
+            print(f"\n{component.upper()}:")
+            print("-" * 70)
+
+            legacy = methods.get('legacy')
+            pattern = methods.get('pattern')
+
+            if legacy and pattern:
+                speedup = legacy.execution_time / pattern.execution_time
+                overhead_pct = ((pattern.execution_time - legacy.execution_time) / legacy.execution_time * 100)
+
+                print(f"  Legacy:  {legacy.execution_time:.3f}s")
+                print(f"  Pattern: {pattern.execution_time:.3f}s", end="")
+
+                if speedup > 1:
+                    print(f"  ({speedup:.2f}x faster)")
+                else:
+                    print(f"  ({overhead_pct:+.1f}% overhead)")
+
+                if hasattr(pattern, 'avg_confidence') and pattern.avg_confidence > 0:
+                    print(f"  Pattern avg confidence: {pattern.avg_confidence:.2f}")
+                if hasattr(pattern, 'avg_combined_score') and pattern.avg_combined_score > 0:
+                    print(f"  Pattern combined score: {pattern.avg_combined_score:.2f}")
+
+        # Overall statistics
+        total_legacy_time = sum(r.execution_time for r in self.results if r.method == 'legacy')
+        total_pattern_time = sum(r.execution_time for r in self.results if r.method == 'pattern')
+
+        print("\n" + "=" * 70)
+        print("TOTAL EXECUTION TIME:")
+        print(f"  Legacy methods:  {total_legacy_time:.3f}s")
+        print(f"  Pattern methods: {total_pattern_time:.3f}s")
+
+        overall_speedup = total_legacy_time / total_pattern_time if total_pattern_time > 0 else 0
+        overall_overhead = ((total_pattern_time - total_legacy_time) / total_legacy_time * 100) if total_legacy_time > 0 else 0
+
+        if overall_speedup > 1:
+            print(f"  Overall: Pattern methods are {overall_speedup:.2f}x FASTER")
+        else:
+            print(f"  Overall: Pattern methods have {overall_overhead:+.1f}% overhead")
+
+        print("=" * 70)
 
 
 if __name__ == "__main__":
-    main()
+    epub_path = "/Users/csrdsg/projects/open_fire_cooking/books/101 Things to Do with a Smoker (Eliza Cross) (Z-Library).epub"
+
+    if not Path(epub_path).exists():
+        print(f"Error: EPUB file not found: {epub_path}")
+        sys.exit(1)
+
+    print("=" * 70)
+    print("EPUB RECIPE PARSER - PERFORMANCE BENCHMARK")
+    print("=" * 70)
+    print(f"EPUB: {Path(epub_path).name}")
+    print(f"Testing: Legacy vs Pattern-based extraction methods")
+    print("=" * 70)
+
+    benchmark = PerformanceBenchmark(epub_path)
+
+    # Run benchmarks
+    benchmark.benchmark_ingredients(iterations=3)
+    benchmark.benchmark_instructions(iterations=3)
+    benchmark.benchmark_metadata(iterations=3)
+
+    # Print summary
+    benchmark.print_summary()
+
+    print("\nBenchmark complete!")
