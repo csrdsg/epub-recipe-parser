@@ -59,6 +59,15 @@ class EPUBRecipeExtractor:
         self.instructions_extractor = instructions_extractor or InstructionsExtractor()
         self.metadata_extractor = metadata_extractor or MetadataExtractor()
 
+        # Initialize A/B test runner if enabled
+        self.ab_runner = None
+        if self.config.ab_testing.enabled:
+            from epub_recipe_parser.testing.ab_runner import ABTestRunner
+            from epub_recipe_parser.extractors.ingredients import IngredientsExtractor as TreatmentExtractor
+
+            self.ab_runner = ABTestRunner(self.config.ab_testing)
+            self.treatment_extractor = TreatmentExtractor()
+
     def extract_from_epub(self, epub_path: str | Path) -> List[Recipe]:
         """Extract all recipes from an EPUB file with proper error handling.
 
@@ -199,15 +208,19 @@ class EPUBRecipeExtractor:
 
                 # A/B Testing: Compare extraction methods (if enabled)
                 ab_metadata = None
-                if self.config.enable_ab_testing:
-                    ab_metadata = self._compare_extraction_methods(
-                        section_soup, text, ingredients
+                if self.ab_runner:
+                    ab_metadata = self.ab_runner.compare_extractors(
+                        control_extractor=self.ingredients_extractor,
+                        treatment_extractor=self.treatment_extractor,
+                        soup=section_soup,
+                        text=text,
+                        control_result=ingredients,
                     )
 
-                    # Optionally use new system in production
-                    if self.config.ab_test_use_new and ab_metadata.get("new_ingredients"):
+                    # Optionally use treatment result in production
+                    if self.ab_runner.should_use_treatment(ab_metadata):
                         ingredients = ab_metadata["new_ingredients"]
-                        logger.info("A/B Test: Using NEW extraction method")
+                        logger.info("A/B Test: Using treatment extraction method")
 
                 # Skip sections where no ingredients could be extracted
                 if not ingredients:
@@ -286,62 +299,3 @@ class EPUBRecipeExtractor:
 
         return recipe
 
-    def _compare_extraction_methods(
-        self, soup, text: str, old_ingredients: Optional[str]
-    ) -> dict:
-        """Compare old vs new extraction methods for A/B testing.
-
-        Returns:
-            dict: Comparison metadata including:
-                - old_ingredients: Original extraction result
-                - new_ingredients: Patterns-based extraction result
-                - old_length: Character count of old result
-                - new_length: Character count of new result
-                - agreement: Boolean (both succeeded or both failed)
-                - confidence: Pattern-based confidence score
-                - linguistic_score: Linguistic analysis score
-                - strategy: Which strategy was used by patterns module
-                - used_structural_detector: Whether structural detector was used
-        """
-        from epub_recipe_parser.extractors.ingredients import IngredientsExtractor
-
-        # Run new extraction method
-        new_ingredients, pattern_metadata = IngredientsExtractor.extract_with_patterns(
-            soup, text
-        )
-
-        # Compare results using configurable success threshold
-        threshold = self.config.ab_test_success_threshold
-        old_success = old_ingredients is not None and len(old_ingredients) > threshold
-        new_success = new_ingredients is not None and len(new_ingredients) > threshold
-        agreement = old_success == new_success
-
-        comparison = {
-            "old_ingredients": old_ingredients,
-            "new_ingredients": new_ingredients,
-            "old_length": len(old_ingredients) if old_ingredients else 0,
-            "new_length": len(new_ingredients) if new_ingredients else 0,
-            "old_success": old_success,
-            "new_success": new_success,
-            "agreement": agreement,
-            "confidence": pattern_metadata.get("confidence", 0.0),
-            "linguistic_score": pattern_metadata.get("linguistic_score", 0.0),
-            "strategy": pattern_metadata.get("strategy"),
-            "used_structural_detector": pattern_metadata.get(
-                "used_structural_detector", False
-            ),
-        }
-
-        # Log comparison
-        if self.config.ab_test_log_level in ["DEBUG", "INFO"]:
-            if not agreement:
-                logger.warning(
-                    f"A/B DISAGREEMENT: old={old_success}, new={new_success}, "
-                    f"confidence={comparison['confidence']:.2f}"
-                )
-            else:
-                logger.debug(
-                    f"A/B AGREEMENT: both {'succeeded' if old_success else 'failed'}"
-                )
-
-        return comparison
