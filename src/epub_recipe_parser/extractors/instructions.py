@@ -1,7 +1,8 @@
 """Extract cooking instructions from HTML."""
 
+import logging
 import re
-from typing import Optional
+from typing import Optional, Dict, Any
 from bs4 import BeautifulSoup
 
 from epub_recipe_parser.utils.html import HTMLParser
@@ -11,6 +12,8 @@ from epub_recipe_parser.utils.patterns import (
     MEASUREMENT_PATTERN,
     NARRATIVE_INSTRUCTION_PREFIXES,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class InstructionsExtractor:
@@ -492,3 +495,139 @@ class InstructionsExtractor:
                     best_paragraph = text_content
 
         return best_paragraph if best_paragraph else None
+
+    @staticmethod
+    def extract_with_patterns(
+        soup: BeautifulSoup, text: str
+    ) -> tuple[Optional[str], Dict[str, Any]]:
+        """Modern pattern-based extraction with confidence scoring.
+
+        This method uses structural detection, pattern matching, and linguistic
+        analysis to extract instructions with confidence metrics.
+
+        Args:
+            soup: BeautifulSoup object containing the HTML
+            text: Plain text version of the content
+
+        Returns:
+            tuple: (instructions_text, metadata_dict)
+                - instructions_text: Extracted instructions or None
+                - metadata_dict: Extraction metadata including:
+                    - strategy: str - Detection strategy used
+                    - confidence: float - Confidence score (0.0-1.0)
+                    - linguistic_score: float - Linguistic quality score
+                    - used_structural_detector: bool
+                    - zone_count: int - Number of zones detected
+                    - detection_method: str - Specific detection method used
+
+        Example:
+            >>> html = '<div class="method"><p>Heat oil. Cook onions.</p></div>'
+            >>> soup = BeautifulSoup(html, 'html.parser')
+            >>> text = soup.get_text()
+            >>> instructions, metadata = InstructionsExtractor.extract_with_patterns(soup, text)
+            >>> print(f"Confidence: {metadata['confidence']:.2f}")
+            Confidence: 0.87
+            >>> print(f"Strategy: {metadata['strategy']}")
+            Strategy: structural_css_class
+        """
+        from epub_recipe_parser.core.patterns import (
+            InstructionPatternDetector,
+            InstructionLinguisticAnalyzer,
+            InstructionStructuralDetector,
+        )
+
+        metadata = {
+            'strategy': None,
+            'confidence': 0.0,
+            'linguistic_score': 0.0,
+            'used_structural_detector': False,
+            'zone_count': 0,
+            'detection_method': None
+        }
+
+        # Try StructuralDetector first
+        logger.debug("Patterns: Trying InstructionStructuralDetector.find_instruction_zones()")
+        zones = InstructionStructuralDetector.find_instruction_zones(soup)
+
+        if zones:
+            metadata['used_structural_detector'] = True
+            metadata['zone_count'] = len(zones)
+            logger.debug(f"Patterns: Found {len(zones)} potential instruction zones")
+
+            # Evaluate each zone and select best
+            best_zone = None
+            best_combined_confidence = 0.0
+
+            for zone in zones:
+                zone_text = zone.zone.get_text(strip=True)
+
+                # Skip very short zones
+                if len(zone_text) < 50:
+                    continue
+
+                # Calculate pattern confidence
+                pattern_confidence = InstructionPatternDetector.calculate_confidence(zone_text)
+
+                # Calculate linguistic score
+                linguistic_score = InstructionLinguisticAnalyzer.calculate_instruction_score(zone_text)
+
+                # Combine structural detection confidence with content confidence
+                # Weighted: 30% structural, 50% pattern, 20% linguistic
+                combined_confidence = (
+                    zone.confidence * 0.30 +
+                    pattern_confidence * 0.50 +
+                    linguistic_score * 0.20
+                )
+
+                logger.debug(
+                    f"Zone ({zone.detection_method}): "
+                    f"structural={zone.confidence:.2f}, "
+                    f"pattern={pattern_confidence:.2f}, "
+                    f"linguistic={linguistic_score:.2f}, "
+                    f"combined={combined_confidence:.2f}"
+                )
+
+                if combined_confidence > best_combined_confidence:
+                    best_combined_confidence = combined_confidence
+                    best_zone = zone
+                    metadata['confidence'] = pattern_confidence
+                    metadata['linguistic_score'] = linguistic_score
+                    metadata['strategy'] = f"structural_{zone.detection_method}"
+                    metadata['detection_method'] = zone.detection_method
+
+            # Use best zone if confidence is sufficient
+            if best_zone and best_combined_confidence >= 0.5:
+                instructions_text = best_zone.zone.get_text(strip=True)
+                logger.info(
+                    f"Patterns SUCCESS: {metadata['strategy']} "
+                    f"(confidence={metadata['confidence']:.2f}, "
+                    f"combined={best_combined_confidence:.2f})"
+                )
+                return instructions_text, metadata
+            else:
+                logger.debug(
+                    f"Patterns: Best zone has low combined confidence "
+                    f"({best_combined_confidence:.2f}), falling back"
+                )
+
+        # Fall back to original strategies with confidence augmentation
+        logger.debug("Patterns: Falling back to original extraction with augmentation")
+        instructions = InstructionsExtractor.extract(soup, text)
+
+        if instructions:
+            # Calculate confidence for original extraction
+            confidence = InstructionPatternDetector.calculate_confidence(instructions)
+            linguistic = InstructionLinguisticAnalyzer.calculate_instruction_score(instructions)
+
+            metadata['strategy'] = 'original_with_patterns'
+            metadata['confidence'] = confidence
+            metadata['linguistic_score'] = linguistic
+
+            logger.info(
+                f"Patterns SUCCESS: Original method enhanced "
+                f"(confidence={confidence:.2f})"
+            )
+            return instructions, metadata
+
+        logger.warning("Patterns FAILED: No instructions found")
+        return None, metadata

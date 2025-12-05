@@ -4,6 +4,12 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, List, Dict, Any, Callable
 
+# Forward declaration for type hints
+try:
+    from bs4 import Tag
+except ImportError:
+    Tag = Any  # Fallback if BeautifulSoup not installed
+
 
 class LogLevel(Enum):
     """Log level enumeration for A/B testing."""
@@ -69,6 +75,19 @@ class ExtractionConfig:
     header_split_level: Optional[int] = None
     include_raw_content: bool = True
     custom_validators: List[Callable] = field(default_factory=list)
+
+
+@dataclass
+class InstructionZone:
+    """Represents a potential instruction zone in HTML.
+
+    This dataclass is used by InstructionStructuralDetector to represent
+    zones detected via HTML structure analysis.
+    """
+    zone: 'Tag'  # BeautifulSoup Tag object containing potential instructions
+    detection_method: str  # Method used to detect this zone (e.g., 'css_class', 'header')
+    confidence: float  # Initial confidence score based on detection method (0.0-1.0)
+    context: Dict[str, Any] = field(default_factory=dict)  # Additional context information
 
 
 @dataclass
