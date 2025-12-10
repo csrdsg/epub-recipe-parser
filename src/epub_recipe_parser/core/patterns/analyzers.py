@@ -42,7 +42,7 @@ class LinguisticAnalyzer:
         if not text or len(text.strip()) < 10:
             return 0.0
 
-        text_lower = text.lower()
+        text.lower()
         lines = [line.strip() for line in text.split("\n") if line.strip()]
 
         if not lines:

@@ -1,7 +1,7 @@
 """Extract recipe metadata (servings, time, etc)."""
 
 import re
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 from bs4 import BeautifulSoup
 
 from epub_recipe_parser.utils.patterns import (
@@ -225,7 +225,7 @@ class MetadataExtractor:
     @staticmethod
     def extract_with_patterns(
         soup: BeautifulSoup, text: str, title: str = ""
-    ) -> tuple[Dict[str, str], Dict[str, any]]:
+    ) -> tuple[Dict[str, str], Dict[str, Any]]:
         """Modern pattern-based metadata extraction with confidence scoring.
 
         This method uses multi-dimensional pattern detection to extract metadata:
@@ -255,7 +255,7 @@ class MetadataExtractor:
             MetadataStructuralDetector,
         )
 
-        analysis_metadata = {
+        analysis_metadata: Dict[str, Any] = {
             'strategy': None,
             'confidence_scores': {},
             'used_structural_detector': False,
@@ -295,14 +295,14 @@ class MetadataExtractor:
                             metadata['serves'] = parsed
                             analysis_metadata['confidence_scores']['serves'] = confidence
                     elif field == 'prep_time':
-                        parsed = MetadataExtractor.parse_time(value)
+                        parsed = MetadataExtractor.parse_time(value)  # type: ignore[assignment]
                         if parsed is not None:
-                            metadata['prep_time'] = str(parsed)
+                            metadata['prep_time'] = str(parsed)  # type: ignore[assignment]
                             analysis_metadata['confidence_scores']['prep_time'] = confidence
                     elif field == 'cook_time':
-                        parsed = MetadataExtractor.parse_time(value)
+                        parsed = MetadataExtractor.parse_time(value)  # type: ignore[assignment]
                         if parsed is not None:
-                            metadata['cook_time'] = str(parsed)
+                            metadata['cook_time'] = str(parsed)  # type: ignore[assignment]
                             analysis_metadata['confidence_scores']['cook_time'] = confidence
                     else:
                         # Pass through other fields

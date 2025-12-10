@@ -41,6 +41,7 @@ __all__ = [
     "MetadataStructuralDetector",
     "MetadataZone",
     # Legacy (deprecated - kept for backward compatibility)
+    "LegacyIngredientPatternDetector",
     "LinguisticAnalyzer",
     "StructuralDetector",
 ]

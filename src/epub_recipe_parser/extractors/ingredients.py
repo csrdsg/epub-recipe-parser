@@ -2,7 +2,7 @@
 
 import logging
 import re
-from typing import Optional, List
+from typing import Optional, List, Union, Dict, Any, Tuple
 from bs4 import BeautifulSoup
 
 from epub_recipe_parser.utils.html import HTMLParser
@@ -71,9 +71,87 @@ class IngredientsExtractor:
     ]
 
     @staticmethod
-    def extract(soup: BeautifulSoup, text: str) -> Optional[str]:
-        """Extract ingredients using multiple strategies with detailed logging."""
-        logger.debug("Starting ingredient extraction")
+    def extract(
+        soup: BeautifulSoup,
+        text: str,
+        use_patterns: bool = True
+    ) -> Union[Optional[str], Tuple[Optional[str], Dict[str, Any]]]:
+        """Extract ingredients with optional pattern-based detection.
+
+        This method acts as a dispatcher that routes to either pattern-based
+        or legacy extraction based on the use_patterns flag.
+
+        Args:
+            soup: BeautifulSoup object containing the HTML
+            text: Plain text version of the content
+            use_patterns: If True, use pattern-based extraction with metadata (default: True)
+                         If False, use legacy extraction (returns just text)
+
+        Returns:
+            If use_patterns=True:
+                tuple[Optional[str], Dict[str, Any]]: (ingredients_text, metadata)
+            If use_patterns=False:
+                Optional[str]: ingredients_text only (legacy behavior)
+
+        The metadata dict includes:
+            - strategy: Detection strategy used
+            - confidence: Pattern confidence score (0.0-1.0)
+            - linguistic_score: Linguistic quality score (0.0-1.0)
+            - combined_score: Weighted combination score
+        """
+        if use_patterns:
+            try:
+                # Use pattern-based extraction
+                result, metadata = IngredientsExtractor.extract_with_patterns(soup, text)
+
+                # Fallback to legacy if pattern extraction fails
+                if result is None:
+                    logger.debug("Pattern extraction returned None, falling back to legacy")
+                    legacy_result = IngredientsExtractor._extract_legacy(soup, text)
+
+                    if legacy_result:
+                        # Add fallback metadata
+                        metadata = {
+                            "strategy": "legacy_fallback",
+                            "confidence": 0.5,  # Conservative confidence for fallback
+                            "linguistic_score": 0.0,
+                            "combined_score": 0.5,
+                            "fallback_reason": "pattern_extraction_failed"
+                        }
+                        return legacy_result, metadata
+                    else:
+                        # Both methods failed
+                        return None, metadata
+
+                return result, metadata
+            except Exception as e:
+                # Graceful degradation on error
+                logger.warning(f"Pattern extraction failed with error: {e}, falling back to legacy")
+                legacy_result = IngredientsExtractor._extract_legacy(soup, text)
+
+                if legacy_result:
+                    metadata = {
+                        "strategy": "legacy_fallback",
+                        "confidence": 0.5,
+                        "linguistic_score": 0.0,
+                        "combined_score": 0.5,
+                        "fallback_reason": f"pattern_extraction_error: {str(e)}"
+                    }
+                    return legacy_result, metadata
+                else:
+                    return None, {}
+        else:
+            # Legacy mode - return just the text
+            return IngredientsExtractor._extract_legacy(soup, text)
+
+    @staticmethod
+    def _extract_legacy(soup: BeautifulSoup, text: str) -> Optional[str]:
+        """Extract ingredients using multiple strategies with detailed logging.
+
+        This is the legacy extraction method, renamed from the original extract().
+        It uses HTML structure and text patterns without advanced pattern detection.
+        """
+        logger.debug("Starting ingredient extraction (legacy mode)")
 
         # Strategy 1: Find by HTML header
         logger.debug("Strategy 1: Searching for ingredient section by header keywords")
@@ -241,11 +319,11 @@ class IngredientsExtractor:
                     (linguistic_score * 0.20)
                 )
 
-                metadata["strategy"] = "structural_zones"
+                metadata["strategy"] = "structural_zones"  # type: ignore[assignment]
                 metadata["confidence"] = pattern_confidence
                 metadata["linguistic_score"] = linguistic_score
                 metadata["combined_score"] = combined
-                metadata["detection_method"] = best_zone.detection_method
+                metadata["detection_method"] = best_zone.detection_method  # type: ignore[assignment]
 
                 # Use combined score for threshold
                 if combined >= 0.5:
@@ -261,7 +339,7 @@ class IngredientsExtractor:
 
         # Fall back to original extraction with pattern augmentation
         logger.debug("Patterns: Falling back to original extraction with pattern augmentation")
-        ingredients = IngredientsExtractor.extract(soup, text)
+        ingredients = IngredientsExtractor._extract_legacy(soup, text)
 
         if ingredients:
             pattern_confidence = IngredientPatternDetector.calculate_confidence(ingredients)
@@ -270,7 +348,7 @@ class IngredientsExtractor:
             # Combined score for fallback (no structural component)
             combined = (pattern_confidence * 0.70) + (linguistic_score * 0.30)
 
-            metadata["strategy"] = "original_with_patterns"
+            metadata["strategy"] = "original_with_patterns"  # type: ignore[assignment]
             metadata["confidence"] = pattern_confidence
             metadata["linguistic_score"] = linguistic_score
             metadata["combined_score"] = combined
@@ -306,12 +384,16 @@ class IngredientsExtractor:
         ingredients = []
 
         for para in soup.find_all("p"):
-            para_classes = para.get("class", [])
+            para_classes_raw = para.get("class")
 
             # Handle both list and string types for class attribute
-            if isinstance(para_classes, str):
-                para_classes = [para_classes]
-            elif not isinstance(para_classes, list):
+            if isinstance(para_classes_raw, str):
+                para_classes = [para_classes_raw]
+            elif isinstance(para_classes_raw, list):
+                para_classes = [str(c) for c in para_classes_raw]
+            elif para_classes_raw is None:
+                para_classes = []
+            else:
                 para_classes = []
 
             # Check if any class matches ingredient patterns

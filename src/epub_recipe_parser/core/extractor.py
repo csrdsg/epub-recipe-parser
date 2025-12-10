@@ -22,6 +22,10 @@ from epub_recipe_parser.extractors import (
 )
 from epub_recipe_parser.utils.html import HTMLParser
 from epub_recipe_parser.utils.text import clean_text
+from epub_recipe_parser.utils.extraction import (
+    normalize_extraction_result,
+    merge_extraction_metadata,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -166,24 +170,27 @@ class EPUBRecipeExtractor:
                             break
 
                     if not title:
-                        title = section.get("aria-label", "Untitled")
+                        aria_label = section.get("aria-label")
+                        title = str(aria_label) if aria_label else "Untitled"
 
                     # Create soup from this section
                     import copy
                     from bs4 import BeautifulSoup
 
                     section_soup = BeautifulSoup("<html><body></body></html>", "html.parser")
-                    section_soup.body.append(copy.copy(section))
+                    body_tag = section_soup.body
+                    if body_tag:
+                        body_tag.append(copy.copy(section))
 
                     sections.append((title, section_soup))
             else:
                 # Fall back to header-based splitting
                 section_tag = main_soup.find("section")
-                section_title_attr = None
+                section_title_attr: Optional[str] = None
                 if section_tag:
                     title_value = section_tag.get("title")
                     # Type safety: Ensure title is a string
-                    if title_value and isinstance(title_value, str):
+                    if isinstance(title_value, str):
                         section_title_attr = title_value
 
                 sections = HTMLParser.split_by_headers(main_soup, section_title=section_title_attr)
@@ -197,18 +204,31 @@ class EPUBRecipeExtractor:
                     continue
 
                 # Get clean title
-                title = clean_text(section_title)
+                title = clean_text(section_title) if section_title else ""
 
                 # Validate as recipe
                 if not self.validator.is_valid_recipe(section_soup, text, title):
                     continue
 
-                # Extract components
-                ingredients = self.ingredients_extractor.extract(section_soup, text)
+                # Extract components with pattern-based detection
+                use_patterns = self.config.extraction.use_pattern_extraction
+
+                # Extract ingredients
+                ingredients_result = self.ingredients_extractor.extract(
+                    section_soup, text, use_patterns=use_patterns
+                )
+                ingredients, ingredients_metadata = normalize_extraction_result(ingredients_result)  # type: ignore[arg-type]
 
                 # A/B Testing: Compare extraction methods (if enabled)
+                # Note: This is now deprecated in favor of pattern-based extraction
                 ab_metadata = None
                 if self.ab_runner:
+                    import warnings
+                    warnings.warn(
+                        "A/B testing is deprecated. Use use_pattern_extraction=True instead.",
+                        DeprecationWarning,
+                        stacklevel=2
+                    )
                     ab_metadata = self.ab_runner.compare_extractors(
                         control_extractor=self.ingredients_extractor,
                         treatment_extractor=self.treatment_extractor,
@@ -227,8 +247,21 @@ class EPUBRecipeExtractor:
                     logger.debug(f"Skipping '{title}': No ingredients found")
                     continue
 
-                instructions = self.instructions_extractor.extract(section_soup, text)
-                metadata = self.metadata_extractor.extract(section_soup, text, title)
+                # Extract instructions and metadata
+                # TODO: These can also be updated to use pattern-based extraction in future
+                instructions_result = self.instructions_extractor.extract(section_soup, text)
+                # Instructions extractor returns Optional[str], not tuple
+                if isinstance(instructions_result, tuple):
+                    instructions = instructions_result[0]  # type: ignore[assignment]
+                else:
+                    instructions = instructions_result  # type: ignore[assignment]
+
+                metadata_result = self.metadata_extractor.extract(section_soup, text, title)
+                # Metadata extractor returns Dict[str, str]
+                if isinstance(metadata_result, dict):
+                    metadata = metadata_result
+                else:
+                    metadata = {}
 
                 # Create recipe object
                 recipe = Recipe(
@@ -247,7 +280,11 @@ class EPUBRecipeExtractor:
                     raw_content=text if self.config.include_raw_content else None,
                 )
 
-                # Add A/B test metadata if testing is enabled
+                # Store extraction metadata
+                if ingredients_metadata:
+                    merge_extraction_metadata(recipe.metadata, ingredients_metadata, "ingredients")
+
+                # Add A/B test metadata if testing is enabled (deprecated)
                 if ab_metadata:
                     recipe.metadata["ab_test"] = ab_metadata
 
@@ -255,7 +292,8 @@ class EPUBRecipeExtractor:
                 recipe.quality_score = self.scorer.score_recipe(recipe)
 
                 # Filter by quality threshold
-                if recipe.quality_score < self.config.min_quality_score:
+                min_score = self.config.min_quality_score or 0
+                if recipe.quality_score < min_score:
                     continue
 
                 recipes.append(recipe)
@@ -274,9 +312,26 @@ class EPUBRecipeExtractor:
         if not self.validator.is_valid_recipe(section_soup, text, title):
             return None
 
-        ingredients = self.ingredients_extractor.extract(section_soup, text)
-        instructions = self.instructions_extractor.extract(section_soup, text)
-        metadata = self.metadata_extractor.extract(section_soup, text, title)
+        # Extract with pattern-based detection
+        use_patterns = self.config.extraction.use_pattern_extraction
+        ingredients_result = self.ingredients_extractor.extract(
+            section_soup, text, use_patterns=use_patterns
+        )
+        ingredients, ingredients_metadata = normalize_extraction_result(ingredients_result)  # type: ignore[arg-type]
+
+        instructions_result = self.instructions_extractor.extract(section_soup, text)
+        # Instructions extractor returns Optional[str], not tuple
+        if isinstance(instructions_result, tuple):
+            instructions = instructions_result[0]  # type: ignore[assignment]
+        else:
+            instructions = instructions_result  # type: ignore[assignment]
+
+        metadata_result = self.metadata_extractor.extract(section_soup, text, title)
+        # Metadata extractor returns Dict[str, str]
+        if isinstance(metadata_result, dict):
+            metadata = metadata_result
+        else:
+            metadata = {}
 
         recipe = Recipe(
             title=title,
@@ -292,9 +347,14 @@ class EPUBRecipeExtractor:
             raw_content=text if self.config.include_raw_content else None,
         )
 
+        # Store extraction metadata
+        if ingredients_metadata:
+            merge_extraction_metadata(recipe.metadata, ingredients_metadata, "ingredients")
+
         recipe.quality_score = self.scorer.score_recipe(recipe)
 
-        if recipe.quality_score < self.config.min_quality_score:
+        min_score = self.config.min_quality_score or 0
+        if recipe.quality_score < min_score:
             return None
 
         return recipe

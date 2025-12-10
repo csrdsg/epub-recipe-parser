@@ -1,7 +1,7 @@
 """A/B test runner for comparing extraction strategies."""
 
 import logging
-from typing import Optional, Dict, Any, Callable
+from typing import Optional, Dict, Any
 from bs4 import BeautifulSoup
 
 from epub_recipe_parser.core.models import ABTestConfig
@@ -57,7 +57,7 @@ class ABTestRunner:
         """
         # Get control result if not provided
         if control_result is None:
-            control_result = control_extractor.extract(soup, text)
+            control_result = control_extractor.extract(soup, text)  # type: ignore[assignment]
 
         # Run treatment extraction
         # The treatment extractor is expected to return a tuple: (result, metadata)
@@ -109,10 +109,10 @@ class ABTestRunner:
 
         # Check if extractor returns tuple (result, metadata)
         if isinstance(result, tuple) and len(result) == 2:
-            return result
+            return result  # type: ignore[return-value]
 
         # Otherwise, it's just a result with no metadata
-        return result, {}
+        return result, {}  # type: ignore[return-value]
 
     def _log_comparison(self, comparison: Dict[str, Any]) -> None:
         """Log comparison results based on configuration.

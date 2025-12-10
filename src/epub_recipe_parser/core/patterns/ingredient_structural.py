@@ -1,7 +1,7 @@
 """Structural detection for ingredients in HTML documents."""
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any
+from typing import List, Dict, Any
 from bs4 import BeautifulSoup, Tag
 import re
 
@@ -143,9 +143,16 @@ class IngredientStructuralDetector:
         for elem in soup.find_all(['div', 'section', 'article', 'ul', 'ol']):
             if cls._element_has_ingredient_class(elem):
                 # Check specificity of class match
-                elem_classes = elem.get('class', [])
-                if isinstance(elem_classes, str):
-                    elem_classes = [elem_classes]
+                elem_classes_raw = elem.get('class')
+                # Normalize to list of strings
+                if isinstance(elem_classes_raw, str):
+                    elem_classes = [elem_classes_raw]
+                elif isinstance(elem_classes_raw, list):
+                    elem_classes = [str(c) for c in elem_classes_raw]
+                elif elem_classes_raw is None:
+                    elem_classes = []
+                else:
+                    elem_classes = []
 
                 class_str = ' '.join(elem_classes).lower()
 
@@ -173,7 +180,14 @@ class IngredientStructuralDetector:
         zones = []
 
         for elem in soup.find_all(attrs={'id': True}):
-            elem_id = elem.get('id', '').lower()
+            elem_id_raw = elem.get('id', '')
+            # Normalize to string
+            if isinstance(elem_id_raw, str):
+                elem_id = elem_id_raw.lower()
+            elif isinstance(elem_id_raw, list):
+                elem_id = ' '.join(str(i) for i in elem_id_raw).lower()
+            else:
+                elem_id = str(elem_id_raw).lower()
 
             if any(pattern in elem_id for pattern in cls.INGREDIENT_ID_PATTERNS):
                 zones.append(IngredientZone(
@@ -274,9 +288,16 @@ class IngredientStructuralDetector:
         current_group = []
 
         for para in soup.find_all('p'):
-            para_classes = para.get('class', [])
-            if isinstance(para_classes, str):
-                para_classes = [para_classes]
+            para_classes_raw = para.get('class')
+            # Normalize to list of strings
+            if isinstance(para_classes_raw, str):
+                para_classes = [para_classes_raw]
+            elif isinstance(para_classes_raw, list):
+                para_classes = [str(c) for c in para_classes_raw]
+            elif para_classes_raw is None:
+                para_classes = []
+            else:
+                para_classes = []
 
             # Check if paragraph has ingredient class
             if any(cls in ingredient_para_classes for cls in para_classes):
@@ -337,9 +358,16 @@ class IngredientStructuralDetector:
     @classmethod
     def _element_has_ingredient_class(cls, elem: Tag) -> bool:
         """Check if element has ingredient-related CSS class."""
-        elem_classes = elem.get('class', [])
-        if isinstance(elem_classes, str):
-            elem_classes = [elem_classes]
+        elem_classes_raw = elem.get('class')
+        # Normalize to list of strings
+        if isinstance(elem_classes_raw, str):
+            elem_classes = [elem_classes_raw]
+        elif isinstance(elem_classes_raw, list):
+            elem_classes = [str(c) for c in elem_classes_raw]
+        elif elem_classes_raw is None:
+            elem_classes = []
+        else:
+            elem_classes = []
 
         class_str = ' '.join(elem_classes).lower()
         return any(keyword in class_str for keyword in cls.INGREDIENT_CSS_CLASSES)

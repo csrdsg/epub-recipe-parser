@@ -59,6 +59,10 @@ The codebase follows a layered architecture:
 
 ### Component Extractors (`extractors/`)
 - `ingredients.py`: `IngredientsExtractor` finds ingredient lists/sections
+  - **Pattern-based extraction (default)**: Uses `extract_with_patterns()` with confidence scoring and structural detection
+  - **Legacy extraction (fallback)**: Uses `_extract_legacy()` for HTML structure-based extraction
+  - Returns tuple `(text, metadata)` when `use_patterns=True` (default), or just `text` when `use_patterns=False`
+  - Gracefully falls back to legacy method if pattern extraction fails
 - `instructions.py`: `InstructionsExtractor` finds instruction text
 - `metadata.py`: `MetadataExtractor` extracts serving size, cook time, prep time, cooking method, protein type
 
@@ -86,10 +90,25 @@ Common options:
 
 1. **Header-based splitting**: The system automatically detects which header level represents recipe boundaries by analyzing header frequency and preferring h2-h3 levels (see `HTMLParser.split_by_headers()` in `utils/html.py:80`)
 
-2. **Quality filtering**: Recipes below `min_quality_score` threshold are discarded during extraction. Typical thresholds: 20 for good results, 70+ for excellent quality
+2. **Pattern-based extraction (NEW - Default)**: Ingredient extraction now uses advanced pattern detection by default
+   - Uses `core/patterns/` modules for structural detection, pattern matching, and linguistic analysis
+   - Returns confidence scores (0.0-1.0) indicating extraction quality
+   - Stores extraction metadata in `recipe.metadata["extraction"]["ingredients"]`
+   - Automatically falls back to legacy extraction if pattern method fails
+   - Can be disabled by setting `use_pattern_extraction=False` in config
 
-3. **TOC integration**: The extractor maps EPUB sections to TOC chapters to provide chapter context for each recipe
+3. **Quality filtering**: Recipes below `min_quality_score` threshold are discarded during extraction. Typical thresholds: 20 for good results, 70+ for excellent quality
 
-4. **Pattern recognition**: Uses regex and heuristics in the extractors to identify ingredients and instructions, not hardcoded keywords
+4. **TOC integration**: The extractor maps EPUB sections to TOC chapters to provide chapter context for each recipe
 
-5. **Direct EPUB processing**: Works directly with EPUB HTML structure using ebooklib + BeautifulSoup, no conversion to markdown required
+5. **Pattern recognition**: Uses regex and heuristics in the extractors to identify ingredients and instructions, not hardcoded keywords
+
+6. **Direct EPUB processing**: Works directly with EPUB HTML structure using ebooklib + BeautifulSoup, no conversion to markdown required
+
+7. **Extraction metadata**: Recipes now include extraction metadata with:
+   - `strategy`: Detection strategy used (e.g., "structural_zones", "legacy_fallback")
+   - `confidence`: Pattern confidence score (0.0-1.0)
+   - `linguistic_score`: Linguistic quality score (0.0-1.0)
+   - `combined_score`: Weighted combination of all scores
+
+   Access via `recipe.metadata["extraction"]["ingredients"]` or use helper functions from `utils/extraction.py`

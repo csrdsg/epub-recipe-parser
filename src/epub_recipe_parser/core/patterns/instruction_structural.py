@@ -1,7 +1,7 @@
 """Structural detection for instruction zones in HTML."""
 
-from typing import List, Dict, Any
-from bs4 import BeautifulSoup, Tag
+from typing import List, Dict
+from bs4 import BeautifulSoup
 from epub_recipe_parser.core.models import InstructionZone
 from epub_recipe_parser.utils.patterns import INSTRUCTION_KEYWORDS
 
@@ -66,9 +66,16 @@ class InstructionStructuralDetector:
         zones = []
 
         for tag in soup.find_all(['div', 'section', 'p']):
-            classes = tag.get('class', [])
-            if isinstance(classes, str):
-                classes = [classes]
+            classes_raw = tag.get('class')
+            # Normalize to list of strings
+            if isinstance(classes_raw, str):
+                classes = [classes_raw]
+            elif isinstance(classes_raw, list):
+                classes = [str(c) for c in classes_raw]
+            elif classes_raw is None:
+                classes = []
+            else:
+                classes = []
 
             class_str = ' '.join(classes).lower()
 

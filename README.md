@@ -130,12 +130,30 @@ from epub_recipe_parser import EPUBRecipeExtractor, ExtractorConfig
 config = ExtractorConfig(
     min_quality_score=50,
     extract_toc=True,
-    split_by_headers=True
+    split_by_headers=True,
+    use_pattern_extraction=True  # Enable pattern-based extraction (default: True)
 )
 
 extractor = EPUBRecipeExtractor(config=config)
 recipes = extractor.extract_from_epub("cookbook.epub")
+
+# Access extraction metadata
+for recipe in recipes:
+    meta = recipe.metadata.get("extraction", {}).get("ingredients", {})
+    if meta:
+        print(f"{recipe.title}: confidence={meta.get('confidence', 0):.2f}")
 ```
+
+#### Configuration Options
+
+- `min_quality_score`: Minimum quality threshold (0-100, default: 20)
+- `extract_toc`: Extract table of contents data (default: True)
+- `split_by_headers`: Split documents by headers (default: True)
+- `use_pattern_extraction`: Use pattern-based extraction with confidence scoring (default: True)
+  - When `True`: Returns confidence scores and extraction metadata
+  - When `False`: Uses legacy extraction method (for compatibility)
+- `validate_recipes`: Validate sections as recipes before extraction (default: True)
+- `include_raw_content`: Include raw HTML in recipe data (default: True)
 
 ### TOC Analysis
 
@@ -178,38 +196,41 @@ Final confidence = (Structural × 0.30) + (Pattern × 0.50) + (Linguistic × 0.2
 
 This multi-dimensional approach achieves **100% agreement** with legacy methods while adding valuable confidence metrics.
 
-### A/B Testing Framework
+### A/B Testing Framework (Deprecated)
 
-Built-in A/B testing lets you compare extraction strategies:
+> **Note**: A/B testing is now deprecated in favor of the default pattern-based extraction with confidence scoring. The pattern-based method is now the default and provides built-in quality metrics.
+
+Legacy A/B testing framework (for historical reference):
 
 ```python
+# DEPRECATED: Use use_pattern_extraction instead
 config = ExtractorConfig(
-    enable_ab_testing=True,
-    ab_test_use_new=False,  # Use old method, test new in parallel
+    enable_ab_testing=True,  # Deprecated
+    ab_test_use_new=False,  # Deprecated
+    min_quality_score=20
+)
+```
+
+**Migration**: Replace A/B testing with pattern extraction metadata:
+
+```python
+# NEW APPROACH: Use pattern-based extraction (default)
+config = ExtractorConfig(
+    use_pattern_extraction=True,  # Default behavior
     min_quality_score=20
 )
 
 extractor = EPUBRecipeExtractor(config)
 recipes = extractor.extract_from_epub("cookbook.epub")
 
-# Each recipe contains A/B test metadata
+# Access confidence scores directly
 for recipe in recipes:
-    ab_data = recipe.metadata.get('ab_test', {})
-    print(f"Confidence: {ab_data.get('confidence', 0):.2f}")
-```
-
-Generate comparison reports:
-
-```bash
-epub-parser ab-report recipes.db
-```
-
-**Example Output:**
-```
-Total recipes tested: 614
-Agreement rate: 100.0%
-Average confidence: 0.55
-✓ Perfect agreement! Both methods produced identical results.
+    extraction = recipe.metadata.get('extraction', {})
+    ingredients_meta = extraction.get('ingredients', {})
+    print(f"{recipe.title}:")
+    print(f"  Strategy: {ingredients_meta.get('strategy', 'N/A')}")
+    print(f"  Confidence: {ingredients_meta.get('confidence', 0):.2f}")
+    print(f"  Combined Score: {ingredients_meta.get('combined_score', 0):.2f}")
 ```
 
 ## Project Structure

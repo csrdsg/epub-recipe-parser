@@ -7,12 +7,10 @@ Compares execution time and extraction quality between legacy and pattern-based 
 import time
 import sys
 from pathlib import Path
-from typing import Dict, Any, List, Tuple
+from typing import List, Tuple
 from dataclasses import dataclass
 from bs4 import BeautifulSoup
 
-from epub_recipe_parser.core.extractor import EPUBRecipeExtractor
-from epub_recipe_parser.core.models import ExtractorConfig
 from epub_recipe_parser.extractors.ingredients import IngredientsExtractor
 from epub_recipe_parser.extractors.instructions import InstructionsExtractor
 from epub_recipe_parser.extractors.metadata import MetadataExtractor
@@ -134,12 +132,12 @@ class PerformanceBenchmark:
         print("\n" + "-" * 70)
         print("Results:")
         print("-" * 70)
-        print(f"Legacy extract():")
+        print("Legacy extract():")
         print(f"  Avg time: {legacy_avg:.3f}s")
         print(f"  Success rate: {legacy_success_rate:.1%}")
         print(f"  Successes: {legacy_result.success_count}/{legacy_result.total_count}")
 
-        print(f"\nPattern-based extract_with_patterns():")
+        print("\nPattern-based extract_with_patterns():")
         print(f"  Avg time: {pattern_avg:.3f}s")
         print(f"  Success rate: {pattern_success_rate:.1%}")
         print(f"  Successes: {pattern_result.success_count}/{pattern_result.total_count}")
@@ -151,7 +149,7 @@ class PerformanceBenchmark:
         speedup = legacy_avg / pattern_avg if pattern_avg > 0 else 0
         overhead = ((pattern_avg - legacy_avg) / legacy_avg * 100) if legacy_avg > 0 else 0
 
-        print(f"\nPerformance comparison:")
+        print("\nPerformance comparison:")
         if speedup > 1:
             print(f"  Pattern method is {speedup:.2f}x FASTER")
         else:
@@ -256,7 +254,7 @@ class PerformanceBenchmark:
         speedup = legacy_avg / pattern_avg if pattern_avg > 0 else 0
         overhead = ((pattern_avg - legacy_avg) / legacy_avg * 100) if legacy_avg > 0 else 0
 
-        print(f"\nPerformance comparison:")
+        print("\nPerformance comparison:")
         if speedup > 1:
             print(f"  Pattern method is {speedup:.2f}x FASTER")
         else:
@@ -364,7 +362,7 @@ class PerformanceBenchmark:
         speedup = legacy_avg / pattern_avg if pattern_avg > 0 else 0
         overhead = ((pattern_avg - legacy_avg) / legacy_avg * 100) if legacy_avg > 0 else 0
 
-        print(f"\nPerformance comparison:")
+        print("\nPerformance comparison:")
         if speedup > 1:
             print(f"  Pattern method is {speedup:.2f}x FASTER")
         else:
@@ -441,7 +439,7 @@ if __name__ == "__main__":
     print("EPUB RECIPE PARSER - PERFORMANCE BENCHMARK")
     print("=" * 70)
     print(f"EPUB: {Path(epub_path).name}")
-    print(f"Testing: Legacy vs Pattern-based extraction methods")
+    print("Testing: Legacy vs Pattern-based extraction methods")
     print("=" * 70)
 
     benchmark = PerformanceBenchmark(epub_path)

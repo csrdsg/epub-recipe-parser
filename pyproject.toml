@@ -1,6 +1,6 @@
 [project]
 name = "epub-recipe-parser"
-version = "0.1.0"
+version = "3.0.0"
 description = "Extract structured recipe data from EPUB cookbook files"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -63,3 +63,13 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = "ebooklib.*"
+ignore_missing_imports = true

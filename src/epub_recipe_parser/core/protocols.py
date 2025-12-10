@@ -4,7 +4,7 @@ These protocols define the contracts that components must fulfill,
 enabling dependency injection, testing with mocks, and easier extensibility.
 """
 
-from typing import Protocol, Optional, runtime_checkable
+from typing import Protocol, Optional, Union, Dict, Any, runtime_checkable
 from bs4 import BeautifulSoup
 
 from epub_recipe_parser.core.models import Recipe
@@ -16,18 +16,39 @@ class IComponentExtractor(Protocol):
 
     Component extractors are responsible for extracting specific parts of a recipe
     from HTML content.
+
+    The extract() method supports two return types for backward compatibility:
+    1. Optional[str]: Legacy mode - returns just the extracted text
+    2. tuple[Optional[str], Dict[str, Any]]: Modern mode - returns (text, metadata)
+
+    The metadata dictionary may contain:
+    - strategy: str - Detection strategy used
+    - confidence: float - Confidence score (0.0-1.0)
+    - linguistic_score: float - Linguistic quality score (0.0-1.0)
+    - combined_score: float - Overall quality score
+    - Other strategy-specific fields
     """
 
-    @staticmethod
-    def extract(soup: BeautifulSoup, text: str) -> Optional[str]:
+    def extract(
+        self,
+        soup: BeautifulSoup,
+        text: str,
+        *args: Any,
+        **kwargs: Any
+    ) -> Union[Optional[str], tuple[Optional[str], Dict[str, Any]], Dict[str, str]]:
         """Extract a component from HTML content.
 
         Args:
             soup: BeautifulSoup object containing the HTML
             text: Plain text version of the content
+            *args: Variable positional arguments (e.g., title for metadata)
+            **kwargs: Variable keyword arguments (e.g., use_patterns for ingredient extraction)
 
         Returns:
-            Extracted component text, or None if not found
+            Either:
+            - Optional[str]: Extracted component text (legacy mode)
+            - tuple[Optional[str], Dict[str, Any]]: (text, metadata) for pattern-based extraction
+            - Dict[str, str]: Metadata dictionary for metadata extractors
         """
         ...
 
@@ -39,8 +60,8 @@ class IRecipeValidator(Protocol):
     Validators determine whether a section of content represents a valid recipe.
     """
 
-    @staticmethod
     def is_valid_recipe(
+        self,
         soup: BeautifulSoup,
         text: str,
         title: str = ""
@@ -65,8 +86,7 @@ class IQualityScorer(Protocol):
     Quality scorers evaluate the completeness and quality of extracted recipes.
     """
 
-    @staticmethod
-    def calculate_score(recipe: Recipe) -> int:
+    def score_recipe(self, recipe: Recipe) -> int:
         """Calculate quality score for a recipe.
 
         Args:

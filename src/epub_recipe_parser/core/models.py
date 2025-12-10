@@ -2,13 +2,13 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, List, Dict, Any, Callable
+from typing import Optional, List, Dict, Any, Callable, TYPE_CHECKING
 
 # Forward declaration for type hints
-try:
-    from bs4 import Tag
-except ImportError:
-    Tag = Any  # Fallback if BeautifulSoup not installed
+if TYPE_CHECKING:
+    from bs4 import Tag as BSTag
+else:
+    BSTag = Any  # Fallback for runtime if BeautifulSoup not installed
 
 
 class LogLevel(Enum):
@@ -75,6 +75,7 @@ class ExtractionConfig:
     header_split_level: Optional[int] = None
     include_raw_content: bool = True
     custom_validators: List[Callable] = field(default_factory=list)
+    use_pattern_extraction: bool = True  # New: Enable pattern-based extraction (default: True)
 
 
 @dataclass
@@ -84,7 +85,7 @@ class InstructionZone:
     This dataclass is used by InstructionStructuralDetector to represent
     zones detected via HTML structure analysis.
     """
-    zone: 'Tag'  # BeautifulSoup Tag object containing potential instructions
+    zone: BSTag  # BeautifulSoup Tag object containing potential instructions
     detection_method: str  # Method used to detect this zone (e.g., 'css_class', 'header')
     confidence: float  # Initial confidence score based on detection method (0.0-1.0)
     context: Dict[str, Any] = field(default_factory=dict)  # Additional context information
@@ -121,6 +122,7 @@ class ExtractorConfig:
     header_split_level: Optional[int] = None
     include_raw_content: Optional[bool] = None
     custom_validators: Optional[List[Callable]] = None
+    use_pattern_extraction: Optional[bool] = None  # New: Pattern-based extraction toggle
     enable_ab_testing: Optional[bool] = None
     ab_test_use_new: Optional[bool] = None
     ab_test_log_level: Optional[str] = None
@@ -143,6 +145,8 @@ class ExtractorConfig:
             self.extraction.include_raw_content = self.include_raw_content
         if self.custom_validators is not None:
             self.extraction.custom_validators = self.custom_validators
+        if self.use_pattern_extraction is not None:
+            self.extraction.use_pattern_extraction = self.use_pattern_extraction
 
         # Map A/B testing params if provided
         if self.enable_ab_testing is not None:
@@ -170,6 +174,8 @@ class ExtractorConfig:
             self.split_by_headers = self.extraction.split_by_headers
         if self.include_raw_content is None:
             self.include_raw_content = self.extraction.include_raw_content
+        if self.use_pattern_extraction is None:
+            self.use_pattern_extraction = self.extraction.use_pattern_extraction
 
         if self.enable_ab_testing is None:
             self.enable_ab_testing = self.ab_testing.enabled

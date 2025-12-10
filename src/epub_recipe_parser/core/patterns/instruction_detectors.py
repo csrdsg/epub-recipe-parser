@@ -1,7 +1,6 @@
 """Pattern detection for instructions extraction."""
 
 import re
-from typing import Optional, Dict, Any
 from epub_recipe_parser.utils.patterns import COOKING_VERBS_PATTERN, MEASUREMENT_PATTERN
 
 
@@ -111,15 +110,18 @@ class InstructionPatternDetector:
         # Calculate density (verbs per 100 words)
         density = (verb_count / word_count) * 100
 
-        # Optimal density for instructions: 3-10 verbs per 100 words
-        if 3 <= density <= 10:
+        # Instructions have high verb density (10-40 verbs per 100 words)
+        # Ingredients have low density (<5 verbs per 100 words)
+        if 10 <= density <= 40:
             return 1.0
-        elif 1 <= density < 3:
-            return density / 3.0  # Linear scale below optimal
-        elif 10 < density <= 15:
-            return 1.0 - ((density - 10) / 10.0)  # Penalty above optimal
+        elif 5 <= density < 10:
+            return (density - 5) / 5.0  # Linear scale 0.0-1.0
+        elif 40 < density <= 60:
+            return 1.0 - ((density - 40) / 20.0)  # Gentle penalty for very high density
+        elif density >= 60:
+            return 0.3  # Very high density (likely all verbs) - still somewhat likely instructions
         else:
-            return 0.0
+            return 0.0  # Very low density - likely not instructions
 
     @classmethod
     def _calculate_marker_score(cls, text: str) -> float:

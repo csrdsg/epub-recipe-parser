@@ -2,6 +2,16 @@
 
 from typing import List, Optional, Tuple
 from bs4 import BeautifulSoup
+import warnings
+
+# Suppress XML parser warning for EPUB XHTML content
+# EPUB files are XHTML (XML-based), but lxml HTML parser works fine and is more forgiving
+try:
+    from bs4 import XMLParsedAsHTMLWarning
+    warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
+except ImportError:
+    # Older versions of BeautifulSoup may not have this warning
+    pass
 
 
 class HTMLParser:

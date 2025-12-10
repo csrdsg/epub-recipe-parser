@@ -1,7 +1,7 @@
 """Pattern detection for ingredients extraction."""
 
 import re
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 
 
 class IngredientPatternDetector:

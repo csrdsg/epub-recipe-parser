@@ -1,6 +1,6 @@
 """Structural detection for HTML document analysis."""
 
-from typing import List, Optional
+from typing import List
 from bs4 import BeautifulSoup, Tag
 
 
@@ -44,16 +44,26 @@ class StructuralDetector:
         if not soup:
             return []
 
-        zones = []
+        zones: List[Tag] = []
 
         # Strategy 1: Find by CSS class patterns
         for pattern in StructuralDetector.INGREDIENT_CLASS_PATTERNS:
             # Check class attributes
-            elements = soup.find_all(attrs={"class": lambda x: x and pattern in " ".join(x).lower()})
+            def has_pattern_in_class(x: str | List[str] | None) -> bool:
+                if not x:
+                    return False
+                if isinstance(x, str):
+                    return pattern in x.lower()
+                return pattern in " ".join(x).lower()
+
+            elements = soup.find_all(attrs={"class": has_pattern_in_class})
             zones.extend(elements)
 
             # Check id attributes
-            elements = soup.find_all(attrs={"id": lambda x: x and pattern in x.lower()})
+            def has_pattern_in_id(x: str | None) -> bool:
+                return bool(x and pattern in x.lower())
+
+            elements = soup.find_all(attrs={"id": has_pattern_in_id})
             zones.extend(elements)
 
         # Strategy 2: Find by header text patterns
@@ -72,7 +82,17 @@ class StructuralDetector:
         lists = soup.find_all(["ul", "ol"])
         for lst in lists:
             # Check if list has relevant classes
-            classes = lst.get("class", [])
+            classes_raw = lst.get("class")
+            # Normalize classes to list of strings
+            if isinstance(classes_raw, str):
+                classes = [classes_raw]
+            elif isinstance(classes_raw, list):
+                classes = [str(c) for c in classes_raw]
+            elif classes_raw is None:
+                classes = []
+            else:
+                classes = []
+
             if any(pattern in " ".join(classes).lower() for pattern in StructuralDetector.INGREDIENT_CLASS_PATTERNS):
                 zones.append(lst)
                 continue

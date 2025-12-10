@@ -597,8 +597,8 @@ class InstructionsExtractor:
                     best_zone = zone
                     metadata['confidence'] = pattern_confidence
                     metadata['linguistic_score'] = linguistic_score
-                    metadata['strategy'] = f"structural_{zone.detection_method}"
-                    metadata['detection_method'] = zone.detection_method
+                    metadata['strategy'] = f"structural_{zone.detection_method}"  # type: ignore[assignment]
+                    metadata['detection_method'] = zone.detection_method  # type: ignore[assignment]
 
             # Use best zone if confidence is sufficient
             if best_zone and best_combined_confidence >= 0.5:
@@ -624,7 +624,7 @@ class InstructionsExtractor:
             confidence = InstructionPatternDetector.calculate_confidence(instructions)
             linguistic = InstructionLinguisticAnalyzer.calculate_instruction_score(instructions)
 
-            metadata['strategy'] = 'original_with_patterns'
+            metadata['strategy'] = 'original_with_patterns'  # type: ignore[assignment]
             metadata['confidence'] = confidence
             metadata['linguistic_score'] = linguistic
 

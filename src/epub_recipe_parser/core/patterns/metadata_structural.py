@@ -3,7 +3,7 @@
 import re
 from typing import List, Dict, Any, Set
 from bs4 import BeautifulSoup, Tag
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -13,11 +13,7 @@ class MetadataZone:
     detection_method: str
     confidence: float
     field_hints: List[str]  # Which metadata fields this zone might contain
-    context: Dict[str, Any] = None
-
-    def __post_init__(self):
-        if self.context is None:
-            self.context = {}
+    context: Dict[str, Any] = field(default_factory=dict)
 
 
 class MetadataStructuralDetector:
@@ -111,9 +107,16 @@ class MetadataStructuralDetector:
         zones = []
 
         for elem in soup.find_all(class_=True):
-            elem_classes = elem.get('class', [])
-            if isinstance(elem_classes, str):
-                elem_classes = [elem_classes]
+            elem_classes_raw = elem.get('class')
+            # Normalize to list of strings
+            if isinstance(elem_classes_raw, str):
+                elem_classes = [elem_classes_raw]
+            elif isinstance(elem_classes_raw, list):
+                elem_classes = [str(c) for c in elem_classes_raw]
+            elif elem_classes_raw is None:
+                elem_classes = []
+            else:
+                elem_classes = []
 
             # Check if any class matches our metadata patterns
             matching_classes = [
@@ -318,7 +321,7 @@ class MetadataStructuralDetector:
         if not zones:
             return []
 
-        unique_zones = []
+        unique_zones: List[MetadataZone] = []
         seen_elements: Set[int] = set()
 
         # Sort by confidence first (highest first)

@@ -1,7 +1,7 @@
 """Pattern detection for metadata extraction."""
 
 import re
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from epub_recipe_parser.utils.patterns import (
     SERVES_PATTERN,
     PREP_TIME_PATTERN,
