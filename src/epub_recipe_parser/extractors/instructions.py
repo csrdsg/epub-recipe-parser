@@ -2,6 +2,7 @@
 
 import logging
 import re
+from collections import defaultdict
 from typing import Optional, Dict, Any
 from bs4 import BeautifulSoup
 
@@ -26,13 +27,6 @@ class InstructionsExtractor:
         "instruction",
         "direction",
         "preparation",
-        "noindentt",
-        "noindent",
-        "noindentp",
-        "methodp",
-        "stepp",
-        "dir",
-        "proc",
         "procedure",
     }
 
@@ -55,13 +49,16 @@ class InstructionsExtractor:
         if directions:
             steps = []
             for direction in directions:
-                if direction.name == "ol":
+                ordered = direction if direction.name == "ol" else direction.find("ol")
+                if ordered is not None:
                     steps.extend(
                         f"{i}. {step}"
-                        for i, step in enumerate(HTMLParser.extract_from_list(direction), 1)
+                        for i, step in enumerate(HTMLParser.extract_from_list(ordered), 1)
                     )
                 else:
-                    steps.append(direction.get_text(" ", strip=True))
+                    text_value = str(direction.get("content") or direction.get_text(" ", strip=True))
+                    if text_value:
+                        steps.append(text_value)
             if steps:
                 return "\n\n".join(steps)
 
@@ -72,6 +69,10 @@ class InstructionsExtractor:
 
         # Strategy 2: Find by header with enhanced keywords
         instructions = InstructionsExtractor._extract_by_header(soup)
+        if instructions and len(instructions) > 100:
+            return instructions
+
+        instructions = InstructionsExtractor._extract_by_repeated_style(soup)
         if instructions and len(instructions) > 100:
             return instructions
 
@@ -107,6 +108,18 @@ class InstructionsExtractor:
             return instructions
 
         return None
+
+    @staticmethod
+    def _extract_by_repeated_style(soup: BeautifulSoup) -> Optional[str]:
+        """Infer a directions style from action-rich sibling paragraphs."""
+        styles = defaultdict(list)
+        for paragraph in soup.find_all("p", class_=True):
+            text = paragraph.get_text(" ", strip=True)
+            if COOKING_VERBS_PATTERN.match(text) or len(COOKING_VERBS_PATTERN.findall(text)) >= 2:
+                key = (id(paragraph.parent), tuple(sorted(paragraph.get("class", []))))
+                styles[key].append(text)
+        strongest = max(styles.values(), key=len, default=[])
+        return "\n\n".join(strongest) if len(strongest) >= 3 else None
 
     @staticmethod
     def _extract_by_class(soup: BeautifulSoup) -> Optional[str]:

@@ -11,8 +11,7 @@ class InstructionStructuralDetector:
 
     INSTRUCTION_CLASS_PATTERNS = [
         "method", "step", "instruction", "direction", "preparation",
-        "noindentt", "noindent", "noindentp", "methodp", "stepp",
-        "dir", "proc", "procedure"
+        "procedure"
     ]
 
     @classmethod

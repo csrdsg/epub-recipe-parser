@@ -42,10 +42,11 @@ recipes already saved from that source. When upgrading an older database, an
 unchanged extraction can acquire its source identifier without losing its tags.
 Use a fresh database to compare parser versions or to review a different edition.
 
-The parser uses HTML sections and headings to find recipes, then looks for
-ingredients, directions, and metadata. Chapter names come from the EPUB table of
-contents where the entries can be mapped to the recipe. Missing optional fields
-such as serving size and cook time are common in source EPUBs.
+The parser reads Schema.org recipe markup when available. For ordinary HTML it
+looks for ingredient and instruction blocks under headings or recurring paragraph
+layouts. It uses section boundaries and text clues when the EPUB has less
+structure. Chapter names come from the table of contents and carry forward
+through the EPUB reading order. Missing fields can be checked with `validate`.
 
 When the directions give a duration for an action such as baking, resting, or
 marinating, the JSON export records it under `metadata.timing.steps`. Each

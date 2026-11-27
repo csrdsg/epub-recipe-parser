@@ -25,7 +25,7 @@ class IngredientStructuralDetector:
 
     # CSS classes commonly used for ingredient sections
     INGREDIENT_CSS_CLASSES = {
-        'ingredient', 'ingredients', 'ingred', 'ings', 'ing',
+        'ingredient', 'ingredients',
         'recipe-ingredient', 'recipe-ingredients', 'recipeingredient',
         'component', 'components', 'item', 'items',
         'shopping-list', 'shoppinglist', 'grocery', 'groceries'
@@ -33,7 +33,7 @@ class IngredientStructuralDetector:
 
     # ID patterns for ingredient sections
     INGREDIENT_ID_PATTERNS = {
-        'ingredient', 'ingredients', 'ingred', 'ings',
+        'ingredient', 'ingredients',
         'recipe-ingredient', 'shopping', 'grocery'
     }
 
@@ -93,7 +93,7 @@ class IngredientStructuralDetector:
         # Strategy 5: List-based detection
         zones.extend(cls._find_list_based_zones(soup))
 
-        # Strategy 6: Paragraph class patterns (e.g., <p class="ing">)
+        # Strategy 6: Semantically named ingredient paragraphs
         zones.extend(cls._find_paragraph_based_zones(soup))
 
         # Strategy 7: Position-based heuristics
@@ -281,8 +281,7 @@ class IngredientStructuralDetector:
         """Find ingredients formatted as individual paragraphs with classes."""
         zones = []
 
-        # Common paragraph-based ingredient patterns in EPUBs
-        ingredient_para_classes = ['ing', 'ingt', 'ings', 'ingst', 'ingd', 'ingredient']
+        ingredient_para_classes = {'ingredient', 'recipe-ingredient', 'recipeingredient'}
 
         # Group consecutive ingredient paragraphs
         current_group = []

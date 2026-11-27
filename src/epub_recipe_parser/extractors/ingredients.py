@@ -106,7 +106,9 @@ class IngredientsExtractor:
                 if element.name == "ul":
                     items.extend(HTMLParser.extract_from_list(element))
                 else:
-                    items.append(element.get_text(" ", strip=True))
+                    text_value = str(element.get("content") or element.get_text(" ", strip=True))
+                    if text_value:
+                        items.append(text_value)
             if items:
                 result = "\n".join(f"- {item}" for item in items)
                 return (result, {"strategy": "explicit_structure"}) if use_patterns else result
@@ -381,15 +383,8 @@ class IngredientsExtractor:
         Many modern EPUBs format ingredients as individual paragraphs with
         semantic CSS classes rather than lists.
         """
-        # CSS classes used for ingredients in various EPUBs
         ingredient_classes = [
-            "ing",
-            "ingt",
-            "ings",
-            "ingst",
-            "ingd",  # Common patterns
             "ingredient",
-            "ing-item",
             "recipe-ingredient",
         ]
 

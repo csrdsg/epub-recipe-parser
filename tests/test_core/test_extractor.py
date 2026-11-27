@@ -397,13 +397,13 @@ class TestEPUBRecipeExtractor:
     [
         (
             "h2",
-            "RH",
+            "layout-a",
             "<ul><li>2 tomatoes</li></ul><ol><li>Slice the tomatoes.</li></ol>",
         ),
         (
             "p",
-            "rechead",
-            '<p class="ing">2 tomatoes</p><p class="noindentt">Slice the tomatoes.</p>',
+            "layout-b",
+            '<p class="layout-c">2 tomatoes</p><p class="layout-d">Slice the tomatoes.</p>',
         ),
     ],
 )
@@ -417,9 +417,9 @@ def test_recipe_headings_split_chapter_and_preserve_components(
     book.set_identifier("heading-fixture")
     book.set_title("Fixture Cookbook")
     book.set_language("en")
-    chapter = epub.EpubHtml(title="Sides", file_name="sides_split_001.xhtml", uid="chapter")
+    chapter = epub.EpubHtml(title="Sides", file_name="chapter-cover.xhtml", uid="chapter")
     chapter.content = "<h1>Sides</h1>"
-    recipes_document = epub.EpubHtml(title="Recipes", file_name="sides_split_002.xhtml", uid="recipes")
+    recipes_document = epub.EpubHtml(title="Recipes", file_name="arbitrary-name.xhtml", uid="recipes")
     sections = "".join(
         f'<{heading_tag} class="{heading_class}">{title}</{heading_tag}>{components}'
         for title in ("Tomato Salad", "Tomato Side")
@@ -455,3 +455,41 @@ def test_sample_cookbook_matches_json_export():
 
     assert len(recipes) == 2
     assert [recipe.to_dict() for recipe in recipes] == expected["recipes"]
+
+
+def test_semantic_recipe_markup_supplies_components_and_metadata():
+    html = """
+    <article itemscope itemtype="https://schema.org/Recipe">
+      <meta itemprop="name" content="Tomato Salad">
+      <meta itemprop="recipeYield" content="Serves 2">
+      <meta itemprop="prepTime" content="PT5M">
+      <time itemprop="cookTime" datetime="PT1H15M">Cooking duration</time>
+      <ul><li itemprop="recipeIngredient">2 tomatoes</li></ul>
+      <div itemprop="recipeInstructions">
+        <ol><li>Slice the tomatoes.</li><li>Toss with salt.</li></ol>
+      </div>
+    </article>
+    """
+    recipe = EPUBRecipeExtractor().extract_from_section(BeautifulSoup(html, "html.parser"))
+
+    assert recipe is not None
+    assert recipe.title == "Tomato Salad"
+    assert recipe.ingredients == "- 2 tomatoes"
+    assert recipe.instructions == "1. Slice the tomatoes.\n\n2. Toss with salt."
+    assert (recipe.serves, recipe.prep_time, recipe.cook_time) == ("2", "5", "75")
+
+
+def test_inferred_structure_rejects_numbered_business_names():
+    from epub_recipe_parser.core.sections import find_structured_sections
+
+    soup = BeautifulSoup(
+        """
+        <h2 id="visit">Plan Your Visit</h2>
+        <p class="listing">73 in the Square: This wine bar serves small plates until 11pm.</p>
+        <p class="listing">18 at the Wharf: The pizza place serves lunch until 3pm.</p>
+        <p class="advice">Take a walk along the harbor and watch for returning boats.</p>
+        """,
+        "html.parser",
+    )
+
+    assert find_structured_sections(soup) == []

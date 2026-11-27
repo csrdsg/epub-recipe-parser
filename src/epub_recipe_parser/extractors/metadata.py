@@ -22,6 +22,7 @@ _TIMED_ACTIONS = "|".join(sorted(_RESTING_ACTIONS | _MARINATING_ACTIONS | _COOKI
 _ACTION_ARGUMENT = rf"(?:(?!\b(?:and|then|until|while|before|after|{_TIMED_ACTIONS})\b)[^.;!?\n])"
 _DONENESS_CLAUSE = rf"(?:(?!\b(?:then|while|before|after|{_TIMED_ACTIONS})\b)[^.;!?\n])"
 _DURATION_NUMBER = r"\d{1,4}(?:\.\d{1,2})?"
+_ISO_DURATION = re.compile(r"P(?:(\d{1,4})D)?(?:T(?:(\d{1,4})H)?(?:(\d{1,4})M)?)?")
 _TIMED_STEP = re.compile(
     rf"(?<!\bnot )\b(?P<action>{_TIMED_ACTIONS})\s+"
     rf"(?:(?:{_ACTION_ARGUMENT}{{1,80}}?\b)?"
@@ -89,6 +90,22 @@ class MetadataExtractor:
             if protein in combined:
                 metadata["protein_type"] = protein
                 break
+
+        for property_name, field in (
+            ("recipeYield", "serves"),
+            ("prepTime", "prep_time"),
+            ("cookTime", "cook_time"),
+        ):
+            element = soup.select_one(f'[itemprop~="{property_name}"]')
+            if element is None:
+                continue
+            value = str(element.get("content") or element.get("datetime") or element.get_text())
+            if field == "serves":
+                parsed = MetadataExtractor.parse_servings(value)
+            else:
+                parsed = MetadataExtractor.parse_time(value)
+            if parsed:
+                metadata[field] = str(parsed)
 
         return metadata
 
@@ -190,6 +207,11 @@ class MetadataExtractor:
         """
         if not raw_value:
             return None
+
+        iso_match = _ISO_DURATION.fullmatch(raw_value.strip().upper())
+        if iso_match:
+            days, hours, minutes = (int(part or 0) for part in iso_match.groups())
+            return days * 1440 + hours * 60 + minutes or None
 
         raw_value = raw_value.lower().strip()
 

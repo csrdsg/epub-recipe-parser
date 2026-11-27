@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Infer recipe boundaries and components from semantic markup, document headings,
+  and repeated sibling layouts. Use the EPUB spine and table of contents to
+  carry chapter context across documents.
 - Require ingredient evidence to reduce false positives in non-cookbook EPUBs,
   including technical books and travel guides.
 - Extract stated step durations from instructions, including cooking, resting,

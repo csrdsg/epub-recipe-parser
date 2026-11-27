@@ -78,6 +78,11 @@ class IngredientPatternDetector:
         "strawberry", "blueberry", "raspberry", "mango", "pineapple"
     }
 
+    INGREDIENT_NOUN_PATTERN = re.compile(
+        r"\b(?:" + "|".join(re.escape(word) for word in sorted(INGREDIENT_NOUNS)) + r")(?:e?s)?\b",
+        re.IGNORECASE,
+    )
+
     # Pre-compiled patterns for performance
     MEASUREMENT_PATTERN = re.compile(
         r'\b\d+[\s/\d]*\s*(?:' + '|'.join(MEASUREMENT_UNITS) + r')\b',

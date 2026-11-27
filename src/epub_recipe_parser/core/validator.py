@@ -11,12 +11,6 @@ from epub_recipe_parser.utils.patterns import (
     SERVES_PATTERN,
 )
 
-_INGREDIENT_NOUN = re.compile(
-    r"\b(?:" + "|".join(re.escape(word) for word in sorted(IngredientPatternDetector.INGREDIENT_NOUNS))
-    + r")(?:e?s)?\b",
-    re.IGNORECASE,
-)
-
 
 class RecipeValidator:
     """Validate if extracted content is actually a recipe."""
@@ -124,7 +118,7 @@ class RecipeValidator:
 
     @staticmethod
     def _has_ingredient_structure(soup: BeautifulSoup, text: str) -> bool:
-        if soup.select_one('.ingredients, .ingredient, .ing, [itemprop="recipeIngredient"]'):
+        if soup.select_one('.ingredients, .ingredient, [itemprop~="recipeIngredient"]'):
             return True
         if re.search(r"^\s*ingredients\s*:?\s*$", text, re.MULTILINE):
             return True
@@ -134,7 +128,7 @@ class RecipeValidator:
                 line = item.get_text(" ", strip=True)
                 if (
                     len(line.split()) <= 9
-                    and _INGREDIENT_NOUN.search(line)
+                    and IngredientPatternDetector.INGREDIENT_NOUN_PATTERN.search(line)
                     and not COOKING_VERBS_PATTERN.match(line)
                 ):
                     food_items += 1

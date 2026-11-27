@@ -3,7 +3,6 @@
 import copy
 import hashlib
 import logging
-import re
 import warnings
 from pathlib import Path
 from typing import List, Optional
@@ -14,6 +13,7 @@ from bs4 import BeautifulSoup
 from ebooklib import epub
 
 from epub_recipe_parser.core.models import Recipe, ExtractorConfig
+from epub_recipe_parser.core.sections import find_structured_sections
 from epub_recipe_parser.core.validator import RecipeValidator
 from epub_recipe_parser.core.protocols import (
     IComponentExtractor,
@@ -33,8 +33,6 @@ from epub_recipe_parser.utils.extraction import (
 from epub_recipe_parser.utils.defuddle import clean_section_html
 
 logger = logging.getLogger(__name__)
-_RECIPE_HEADING = "h2[class~='rh' i], h3[class~='rh' i], .rechead, .recipe-title, .recipe-heading"
-_SPLIT_DOCUMENT = re.compile(r"_split_\d+(?=\.[^./]+$)")
 
 
 def _chapter_lookup(entries):
@@ -143,12 +141,9 @@ class EPUBRecipeExtractor:
         book_title = title_meta[0][0] if title_meta else epub_path.stem
 
         chapters_by_path, chapters_by_title = _chapter_lookup(book.toc)
-        split_chapters: dict[str, set[str]] = {}
-        for path, chapter in chapters_by_path.items():
-            if _SPLIT_DOCUMENT.search(path):
-                group = _SPLIT_DOCUMENT.sub("", path)
-                split_chapters.setdefault(group, set()).add(chapter)
-
+        toc_titles: dict[str, set[str]] = {}
+        for path, title in chapters_by_title:
+            toc_titles.setdefault(path, set()).add(title)
         with epub_path.open("rb") as source:
             digest = hashlib.sha256()
             for chunk in iter(lambda: source.read(1024 * 1024), b""):
@@ -159,18 +154,34 @@ class EPUBRecipeExtractor:
         doc_items = list(book.get_items_of_type(ebooklib.ITEM_DOCUMENT))
         logger.debug("Found %d HTML documents", len(doc_items))
 
+        # Carry an explicit chapter target forward through the EPUB reading order.
+        # Items outside the spine retain their direct TOC mapping, if present.
+        spine = getattr(book, "spine", ())
+        reading_order = {}
+        spine_chapters = {}
+        current_chapter = None
+        spine_entries = spine if isinstance(spine, (list, tuple)) else ()
+        for position, (idref, linear) in enumerate(spine_entries):
+            item = book.get_item_with_id(idref)
+            if item is not None and item.get_type() == ebooklib.ITEM_DOCUMENT:
+                path = unquote(item.get_name())
+                reading_order.setdefault(path, position)
+                if linear == "no" or "nav" in item.properties:
+                    continue
+                current_chapter = chapters_by_path.get(path, current_chapter)
+                if current_chapter is not None:
+                    spine_chapters[path] = current_chapter
+
+        doc_items.sort(key=lambda item: reading_order.get(unquote(item.get_name()), len(spine_entries)))
         recipes = []
         for item in doc_items:
             item_name = item.get_name()
             document_path = unquote(item_name)
-            chapter = chapters_by_path.get(document_path)
-            if chapter is None and _SPLIT_DOCUMENT.search(document_path):
-                group = _SPLIT_DOCUMENT.sub("", document_path)
-                matches = split_chapters.get(group, set())
-                if len(matches) == 1:
-                    chapter = next(iter(matches))
+            chapter = chapters_by_path.get(document_path) or spine_chapters.get(document_path)
 
-            sections = self._find_sections(item.get_content())
+            sections = self._find_sections(
+                item.get_content(), toc_titles=toc_titles.get(document_path)
+            )
             title_occurrences: dict[str, int] = {}
             for section_title, section_soup in sections:
                 if self.config.extraction.use_defuddle_cleaning:
@@ -207,47 +218,16 @@ class EPUBRecipeExtractor:
         return recipes
 
     @staticmethod
-    def _find_sections(content: bytes) -> list[tuple[str, BeautifulSoup]]:
+    def _find_sections(
+        content: bytes, *, toc_titles: set[str] | None = None
+    ) -> list[tuple[str, BeautifulSoup]]:
         """Find candidate recipe sections in an EPUB document."""
         main_soup = HTMLParser.parse_html(content)
-        marked_headings = main_soup.select(_RECIPE_HEADING)
-        if marked_headings:
-            sections = []
-            heading_ids = {id(heading) for heading in marked_headings}
-            for heading in marked_headings:
-                title = heading.get_text(" ", strip=True)
-                section_soup = BeautifulSoup("", "html.parser")
-                section_soup.append(copy.copy(heading))
-                for sibling in heading.find_next_siblings():
-                    if id(sibling) in heading_ids or sibling.name == "h1":
-                        break
-                    if sibling.name == "aside":
-                        continue
-                    section_soup.append(copy.copy(sibling))
-                ingredient_list = section_soup.find("ul", recursive=False)
-                directions_list = section_soup.find("ol", recursive=False)
-                if (
-                    ingredient_list
-                    and directions_list
-                    and any(node is directions_list for node in ingredient_list.next_siblings)
-                ):
-                    ingredient_list["data-recipe-component"] = "ingredients"
-                    directions_list["data-recipe-component"] = "instructions"
-                elif heading.name == "p" and "rechead" in heading.get("class", []):
-                    paragraphs = section_soup.find_all("p", recursive=False)
-                    ingredients = [p for p in paragraphs if "ing" in p.get("class", [])]
-                    instructions = [
-                        p for p in paragraphs if {"noindentt", "noindents"}.intersection(
-                            p.get("class", [])
-                        )
-                    ]
-                    if ingredients and instructions:
-                        for element in ingredients:
-                            element["data-recipe-component"] = "ingredients"
-                        for element in instructions:
-                            element["data-recipe-component"] = "instructions"
-                sections.append((title, section_soup))
-            return sections
+        structured = find_structured_sections(main_soup)
+        detected_titles = {clean_text(title).casefold() for title, _ in structured}
+        missing_toc_titles = (toc_titles or set()) - detected_titles
+        if structured and not missing_toc_titles:
+            return structured
 
         outer_sections = main_soup.body.find_all("section", recursive=False) if main_soup.body else []
         if len(outer_sections) == 1 and outer_sections[0].get("role") == "doc-introduction":
@@ -270,18 +250,28 @@ class EPUBRecipeExtractor:
                 section_soup.body.append(copy.copy(section))
             sections.append((title, section_soup))
 
-        if sections:
-            return sections
+        if not sections:
+            section_tag = main_soup.find("section")
+            title_value = section_tag.get("title") if section_tag is not None else None
+            section_title = title_value if isinstance(title_value, str) else None
+            sections = HTMLParser.split_by_headers(main_soup, section_title=section_title)
 
-        section_tag = main_soup.find("section")
-        title_value = section_tag.get("title") if section_tag is not None else None
-        section_title = title_value if isinstance(title_value, str) else None
-        return HTMLParser.split_by_headers(main_soup, section_title=section_title)
+        if structured:
+            structured.extend(
+                section for section in sections
+                if clean_text(section[0]).casefold() in missing_toc_titles
+            )
+            return structured
+        return sections
 
     def extract_from_section(
         self, section_soup, title: str = "", book_name: str = "", author: str = ""
     ) -> Optional[Recipe]:
         """Extract a single recipe from HTML section."""
+        structured = find_structured_sections(section_soup)
+        if len(structured) == 1:
+            detected_title, section_soup = structured[0]
+            title = title or detected_title
         return self._extract_candidate(section_soup, title, book_name, author)
 
     def _extract_candidate(
