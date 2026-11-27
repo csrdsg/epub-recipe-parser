@@ -7,7 +7,6 @@ enabling dependency injection, testing with mocks, and easier extensibility.
 from typing import Protocol, Optional, Union, Dict, Any, runtime_checkable
 from bs4 import BeautifulSoup
 
-from epub_recipe_parser.core.models import Recipe
 
 
 @runtime_checkable
@@ -75,25 +74,6 @@ class IRecipeValidator(Protocol):
 
         Returns:
             True if content appears to be a recipe, False otherwise
-        """
-        ...
-
-
-@runtime_checkable
-class IQualityScorer(Protocol):
-    """Protocol for quality scorers.
-
-    Quality scorers evaluate the completeness and quality of extracted recipes.
-    """
-
-    def score_recipe(self, recipe: Recipe) -> int:
-        """Calculate quality score for a recipe.
-
-        Args:
-            recipe: Recipe object to score
-
-        Returns:
-            Quality score (typically 0-100)
         """
         ...
 

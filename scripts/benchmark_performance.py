@@ -429,11 +429,14 @@ class PerformanceBenchmark:
 
 
 if __name__ == "__main__":
-    epub_path = "/Users/csrdsg/projects/open_fire_cooking/books/101 Things to Do with a Smoker (Eliza Cross) (Z-Library).epub"
+    import argparse
 
-    if not Path(epub_path).exists():
-        print(f"Error: EPUB file not found: {epub_path}")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Compare cookbook extraction strategies")
+    parser.add_argument("epub_file", type=Path, help="Path to an EPUB cookbook")
+    args = parser.parse_args()
+    if not args.epub_file.is_file():
+        parser.error(f"EPUB file not found: {args.epub_file}")
+    epub_path = str(args.epub_file)
 
     print("=" * 70)
     print("EPUB RECIPE PARSER - PERFORMANCE BENCHMARK")

@@ -6,11 +6,14 @@ Runs comprehensive integration tests for the pattern-based extraction system
 and generates a detailed summary report.
 """
 
+import os
 import sys
 import time
 from pathlib import Path
 from datetime import datetime
 import subprocess
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 # Color codes for terminal output
 class Colors:
@@ -66,17 +69,16 @@ def run_tests():
     print_info(f"Python version: {sys.version.split()[0]}")
     print()
 
-    # Check if test EPUB exists
-    test_epub = Path("/Users/csrdsg/projects/open_fire_cooking/books/101 Things to Do with a Smoker (Eliza Cross) (Z-Library).epub")
-    if not test_epub.exists():
-        print_error(f"Test EPUB not found: {test_epub}")
-        print_warning("Please ensure the test EPUB file exists before running integration tests")
+    configured_book = os.environ.get("EPUB_RECIPE_TEST_BOOK")
+    if not configured_book or not Path(configured_book).is_file():
+        print_error("Set EPUB_RECIPE_TEST_BOOK to the local smoker cookbook EPUB")
         return False
 
+    test_epub = Path(configured_book).resolve()
     print_success(f"Test EPUB found: {test_epub.name}")
 
     # Run pytest with verbose output and coverage
-    test_file = Path(__file__).parent / "tests" / "integration" / "test_integration.py"
+    test_file = PROJECT_ROOT / "tests" / "integration" / "test_integration.py"
 
     if not test_file.exists():
         print_error(f"Test file not found: {test_file}")
@@ -89,6 +91,8 @@ def run_tests():
 
     # Prepare pytest command
     pytest_cmd = [
+        "uv",
+        "run",
         "pytest",
         str(test_file),
         "-v",  # Verbose
@@ -107,7 +111,8 @@ def run_tests():
     try:
         result = subprocess.run(
             pytest_cmd,
-            cwd=Path(__file__).parent,
+            cwd=PROJECT_ROOT,
+            env={**os.environ, "EPUB_RECIPE_TEST_BOOK": str(test_epub)},
             capture_output=False,  # Show output in real-time
             text=True
         )
@@ -128,7 +133,7 @@ def run_tests():
 
     except FileNotFoundError:
         print_error("pytest not found. Please install it:")
-        print_info("  pip install pytest")
+        print_info("  uv sync --extra dev")
         return False
     except Exception as e:
         print_error(f"Error running tests: {e}")

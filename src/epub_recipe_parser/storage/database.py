@@ -94,7 +94,6 @@ class RecipeDatabase:
                             cooking_method TEXT,
                             protein_type TEXT,
                             difficulty TEXT,
-                            quality_score INTEGER DEFAULT 0,
                             raw_content TEXT,
                             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                         )
@@ -124,9 +123,6 @@ class RecipeDatabase:
 
                     # Create indexes for common queries
                     cursor.execute("CREATE INDEX IF NOT EXISTS idx_recipes_book ON recipes(book)")
-                    cursor.execute(
-                        "CREATE INDEX IF NOT EXISTS idx_recipes_quality ON recipes(quality_score)"
-                    )
                     cursor.execute(
                         "CREATE INDEX IF NOT EXISTS idx_recipes_cooking_method ON recipes(cooking_method)"
                     )
@@ -238,8 +234,8 @@ class RecipeDatabase:
                             serves, prep_time, cook_time,
                             ingredients, instructions, notes,
                             cooking_method, protein_type,
-                            quality_score, raw_content, metadata
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            raw_content, metadata
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                         (
                             recipe.title,
@@ -255,7 +251,6 @@ class RecipeDatabase:
                             recipe.notes,
                             recipe.cooking_method,
                             recipe.protein_type,
-                            recipe.quality_score,
                             recipe.raw_content,
                             metadata_json,
                         ),
@@ -374,7 +369,6 @@ class RecipeDatabase:
             tags=recipe_tags,
             cooking_method=row["cooking_method"],
             protein_type=row["protein_type"],
-            quality_score=row["quality_score"],
             raw_content=row["raw_content"],
             metadata=recipe_metadata,
         )
@@ -382,7 +376,6 @@ class RecipeDatabase:
     def query(
         self,
         filters: Optional[Dict[str, Any]] = None,
-        min_quality: Optional[int] = None,
         limit: Optional[int] = None,
         tags: Optional[List[str]] = None,
         tags_match_all: bool = True,
@@ -391,7 +384,6 @@ class RecipeDatabase:
 
         Args:
             filters: Dictionary of field:value filters (only safe column names allowed)
-            min_quality: Minimum quality score
             limit: Maximum number of results
             tags: List of tags to filter by (case-insensitive)
             tags_match_all: If True, match recipes with ALL tags (AND logic).
@@ -416,7 +408,6 @@ class RecipeDatabase:
             "cook_time",
             "cooking_method",
             "protein_type",
-            "quality_score",
             "difficulty",
         }
 
@@ -458,11 +449,6 @@ class RecipeDatabase:
                     query_sql += f" AND {prefix}{field} = ?"
                     params.append(value)
 
-        if min_quality is not None:
-            prefix = "r." if tags else ""
-            query_sql += f" AND {prefix}quality_score >= ?"
-            params.append(min_quality)
-
         # Group by recipe ID when matching ALL tags
         if tags and tags_match_all:
             query_sql += " GROUP BY r.id"
@@ -470,7 +456,7 @@ class RecipeDatabase:
             params.append(len(tags))
 
         query_sql += (
-            " ORDER BY quality_score DESC" if not tags else " ORDER BY r.quality_score DESC"
+            " ORDER BY id" if not tags else " ORDER BY r.id"
         )
 
         if limit:
@@ -499,7 +485,7 @@ class RecipeDatabase:
             tags: Optional list of tags to filter by (case-insensitive)
 
         Returns:
-            List of matching recipes ordered by quality score with tags populated
+            List of matching recipes ordered by insertion with tags populated
 
         Raises:
             sqlite3.DatabaseError: If database search fails
@@ -521,7 +507,7 @@ class RecipeDatabase:
                     JOIN tags t ON rt.tag_id = t.id
                     WHERE (r.title LIKE ? OR r.ingredients LIKE ? OR r.instructions LIKE ?)
                     AND t.tag_name IN ({placeholders}) COLLATE NOCASE
-                    ORDER BY r.quality_score DESC
+                    ORDER BY r.id
                     LIMIT ?
                 """,
                     (
@@ -538,7 +524,7 @@ class RecipeDatabase:
                     """
                     SELECT * FROM recipes
                     WHERE title LIKE ? OR ingredients LIKE ? OR instructions LIKE ?
-                    ORDER BY quality_score DESC
+                    ORDER BY id
                     LIMIT ?
                 """,
                     (search_query, search_query, search_query, limit),
@@ -578,7 +564,6 @@ class RecipeDatabase:
             "cook_time",
             "cooking_method",
             "protein_type",
-            "quality_score",
             "difficulty",
         }
 

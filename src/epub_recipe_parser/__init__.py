@@ -9,8 +9,9 @@ from epub_recipe_parser.core.models import (
     LogLevel,
 )
 
-__version__ = "0.1.0"
+from epub_recipe_parser.__version__ import __version__
 __all__ = [
+    "__version__",
     "EPUBRecipeExtractor",
     "Recipe",
     "ExtractorConfig",

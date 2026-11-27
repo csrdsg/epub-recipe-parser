@@ -154,19 +154,19 @@ epub-recipe-parser/
 ## Documentation
 
 ### For Users
-- [README.md](README.md) - Quick start and features
-- [CHANGELOG.md](CHANGELOG.md) - Version history
-- [docs/SETUP.md](docs/SETUP.md) - Development setup
+- [README.md](../../README.md) - Quick start and features
+- [CHANGELOG.md](../../CHANGELOG.md) - Version history
+- [docs/SETUP.md](../guides/SETUP.md) - Development setup
 
 ### For Developers
-- [CONTRIBUTING.md](CONTRIBUTING.md) - Contribution guidelines
-- [CLAUDE.md](CLAUDE.md) - AI assistant guide
-- [docs/development/](docs/development/) - Technical documentation
+- [CONTRIBUTING.md](../../CONTRIBUTING.md) - Contribution guidelines
+- [CLAUDE.md](../../CLAUDE.md) - AI assistant guide
+- [docs/development/](development/) - Technical documentation
 
 ### Research & Analysis
-- [docs/development/BUG_REPORT_ROUND_2.md](docs/development/BUG_REPORT_ROUND_2.md) - Latest bug analysis
-- [docs/development/RE-EXTRACTION_RESULTS.md](docs/development/RE-EXTRACTION_RESULTS.md) - Validation results
-- [docs/development/SCALING_RESEARCH_REPORT.md](docs/development/SCALING_RESEARCH_REPORT.md) - Performance analysis
+- [docs/development/BUG_REPORT_ROUND_2.md](development/BUG_REPORT_ROUND_2.md) - Latest bug analysis
+- [docs/development/RE-EXTRACTION_RESULTS.md](development/RE-EXTRACTION_RESULTS.md) - Validation results
+- [docs/development/SCALING_RESEARCH_REPORT.md](development/SCALING_RESEARCH_REPORT.md) - Performance analysis
 
 ---
 
@@ -216,14 +216,14 @@ epub-parser search recipes.db "chicken"
 ## Support
 
 - **Issues**: GitHub Issues (coming soon)
-- **Documentation**: [docs/](docs/)
-- **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md)
+- **Documentation**: [docs/](../)
+- **Contributing**: [CONTRIBUTING.md](../../CONTRIBUTING.md)
 
 ---
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License - see [LICENSE](../../LICENSE) for details.
 
 ---
 

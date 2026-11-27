@@ -310,8 +310,8 @@ print(f"Detection: {meta.get('detection_method')}")
 
 ## Need Help?
 
-- Check the [README.md](README.md) for usage examples
-- Review [CLAUDE.md](CLAUDE.md) for architectural details
+- Check the [README.md](../../README.md) for usage examples
+- Review [CLAUDE.md](../../CLAUDE.md) for architectural details
 - Open an issue on GitHub for migration questions
 - Legacy method will be supported until v4.0
 

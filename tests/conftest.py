@@ -20,7 +20,6 @@ def sample_recipe():
         cook_time="30 minutes",
         cooking_method="bake",
         protein_type="chicken",
-        quality_score=85,
     )
 
 
@@ -70,7 +69,6 @@ def sample_html_without_recipe():
 def extractor_config():
     """Create a default extractor configuration."""
     return ExtractorConfig(
-        min_quality_score=20,
         extract_toc=True,
         validate_recipes=True,
         include_raw_content=True,

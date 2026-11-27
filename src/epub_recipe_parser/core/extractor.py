@@ -1,19 +1,21 @@
 """Main EPUB recipe extractor."""
 
+import copy
 import logging
+import warnings
 from pathlib import Path
 from typing import List, Optional
+from urllib.parse import unquote, urlsplit
 
 import ebooklib
+from bs4 import BeautifulSoup
 from ebooklib import epub
 
 from epub_recipe_parser.core.models import Recipe, ExtractorConfig
 from epub_recipe_parser.core.validator import RecipeValidator
-from epub_recipe_parser.core.quality import QualityScorer
 from epub_recipe_parser.core.protocols import (
     IComponentExtractor,
     IRecipeValidator,
-    IQualityScorer,
 )
 from epub_recipe_parser.extractors import (
     IngredientsExtractor,
@@ -26,8 +28,32 @@ from epub_recipe_parser.utils.extraction import (
     normalize_extraction_result,
     merge_extraction_metadata,
 )
+from epub_recipe_parser.utils.defuddle import clean_section_html
 
 logger = logging.getLogger(__name__)
+
+
+def _chapter_lookup(entries):
+    """Index TOC chapters by document path and child entry title."""
+    by_path: dict[str, str] = {}
+    by_title: dict[tuple[str, str], str] = {}
+
+    def visit(nodes, chapter: str | None = None):
+        for node in nodes:
+            entry, children = node if isinstance(node, tuple) else (node, ())
+            title = getattr(entry, "title", None)
+            href = getattr(entry, "href", None)
+            if title and href:
+                path = unquote(urlsplit(href).path)
+                if path:
+                    by_path.setdefault(path, chapter or title)
+                    if chapter:
+                        by_title.setdefault((path, clean_text(title).casefold()), chapter)
+            if children:
+                visit(children, title or chapter)
+
+    visit(entries or ())
+    return by_path, by_title
 
 
 class EPUBRecipeExtractor:
@@ -41,7 +67,6 @@ class EPUBRecipeExtractor:
         self,
         config: Optional[ExtractorConfig] = None,
         validator: Optional[IRecipeValidator] = None,
-        scorer: Optional[IQualityScorer] = None,
         ingredients_extractor: Optional[IComponentExtractor] = None,
         instructions_extractor: Optional[IComponentExtractor] = None,
         metadata_extractor: Optional[IComponentExtractor] = None,
@@ -51,14 +76,12 @@ class EPUBRecipeExtractor:
         Args:
             config: Extraction configuration
             validator: Recipe validator (defaults to RecipeValidator)
-            scorer: Quality scorer (defaults to QualityScorer)
             ingredients_extractor: Ingredients extractor (defaults to IngredientsExtractor)
             instructions_extractor: Instructions extractor (defaults to InstructionsExtractor)
             metadata_extractor: Metadata extractor (defaults to MetadataExtractor)
         """
         self.config = config or ExtractorConfig()
         self.validator = validator or RecipeValidator()
-        self.scorer = scorer or QualityScorer()
         self.ingredients_extractor = ingredients_extractor or IngredientsExtractor()
         self.instructions_extractor = instructions_extractor or InstructionsExtractor()
         self.metadata_extractor = metadata_extractor or MetadataExtractor()
@@ -115,17 +138,7 @@ class EPUBRecipeExtractor:
         title_meta = book.get_metadata("DC", "title")
         book_title = title_meta[0][0] if title_meta else epub_path.stem
 
-        # Get TOC for chapter information
-        toc = book.toc
-        chapter_map = {}
-        if toc:
-            for item in toc:
-                if isinstance(item, tuple):
-                    section, _ = item
-                    if hasattr(section, "href") and hasattr(section, "title"):
-                        chapter_map[section.href] = section.title
-                elif hasattr(item, "href") and hasattr(item, "title"):
-                    chapter_map[item.href] = item.title
+        chapters_by_path, chapters_by_title = _chapter_lookup(book.toc)
 
         # Get all document items
         doc_items = list(book.get_items_of_type(ebooklib.ITEM_DOCUMENT))
@@ -133,181 +146,89 @@ class EPUBRecipeExtractor:
 
         recipes = []
         for item in doc_items:
-            # Determine chapter from TOC
             item_name = item.get_name()
-            chapter = chapter_map.get(item_name, "Unknown")
+            document_path = unquote(item_name)
 
-            # Get HTML content and split by headers
-            content = item.get_content()
-            main_soup = HTMLParser.parse_html(content)
-
-            # Try section-based parsing first (modern EPUB structure)
-            all_sections = main_soup.find_all("section", recursive=True)
-
-            # Filter to recipe sections (exclude wrapper sections)
-            recipe_sections = []
-            for section in all_sections:
-                # Skip "part" sections which are wrappers
-                epub_type = section.get("epub:type")
-                if epub_type == "part":
-                    continue
-
-                # Must have substantial content
-                text = section.get_text(strip=True)
-                if len(text) > 100:
-                    recipe_sections.append(section)
-
-            # Process each section as a potential recipe
-            if recipe_sections:
-                sections = []
-                for section in recipe_sections:
-                    # Extract title from header within section
-                    title = None
-                    for header in section.find_all(["h1", "h2", "h3", "h4", "h5"], limit=3):
-                        header_text = header.get_text(strip=True)
-                        if len(header_text) > 3 and not header_text.isdigit():
-                            title = header_text
-                            break
-
-                    if not title:
-                        aria_label = section.get("aria-label")
-                        title = str(aria_label) if aria_label else "Untitled"
-
-                    # Create soup from this section
-                    import copy
-                    from bs4 import BeautifulSoup
-
-                    section_soup = BeautifulSoup("<html><body></body></html>", "html.parser")
-                    body_tag = section_soup.body
-                    if body_tag:
-                        body_tag.append(copy.copy(section))
-
-                    sections.append((title, section_soup))
-            else:
-                # Fall back to header-based splitting
-                section_tag = main_soup.find("section")
-                section_title_attr: Optional[str] = None
-                if section_tag:
-                    title_value = section_tag.get("title")
-                    # Type safety: Ensure title is a string
-                    if isinstance(title_value, str):
-                        section_title_attr = title_value
-
-                sections = HTMLParser.split_by_headers(main_soup, section_title=section_title_attr)
-
+            sections = self._find_sections(item.get_content())
             for section_title, section_soup in sections:
-                # Extract text for validation
-                text = HTMLParser.extract_text(section_soup)
+                if self.config.extraction.use_defuddle_cleaning:
+                    original_html = str(section_soup)
+                    cleaned_html = clean_section_html(original_html, use_defuddle=True)
+                    if cleaned_html and cleaned_html != original_html:
+                        section_soup = HTMLParser.parse_html(cleaned_html.encode())
 
-                # Quick validation before full extraction
-                if len(text) < 100:
-                    continue
-
-                # Get clean title
                 title = clean_text(section_title) if section_title else ""
-
-                # Validate as recipe
-                if not self.validator.is_valid_recipe(section_soup, text, title):
-                    continue
-
-                # Extract components with pattern-based detection
-                use_patterns = self.config.extraction.use_pattern_extraction
-
-                # Extract ingredients
-                ingredients_result = self.ingredients_extractor.extract(
-                    section_soup, text, use_patterns=use_patterns
+                chapter = chapters_by_title.get(
+                    (document_path, title.casefold()), chapters_by_path.get(document_path, "Unknown")
                 )
-                ingredients, ingredients_metadata = normalize_extraction_result(ingredients_result)  # type: ignore[arg-type]
-
-                # A/B Testing: Compare extraction methods (if enabled)
-                # Note: This is now deprecated in favor of pattern-based extraction
-                ab_metadata = None
-                if self.ab_runner:
-                    import warnings
-                    warnings.warn(
-                        "A/B testing is deprecated. Use use_pattern_extraction=True instead.",
-                        DeprecationWarning,
-                        stacklevel=2
-                    )
-                    ab_metadata = self.ab_runner.compare_extractors(
-                        control_extractor=self.ingredients_extractor,
-                        treatment_extractor=self.treatment_extractor,
-                        soup=section_soup,
-                        text=text,
-                        control_result=ingredients,
-                    )
-
-                    # Optionally use treatment result in production
-                    if self.ab_runner.should_use_treatment(ab_metadata):
-                        ingredients = ab_metadata["new_ingredients"]
-                        logger.info("A/B Test: Using treatment extraction method")
-
-                # Skip sections where no ingredients could be extracted
-                if not ingredients:
-                    logger.debug(f"Skipping '{title}': No ingredients found")
-                    continue
-
-                # Extract instructions and metadata
-                # TODO: These can also be updated to use pattern-based extraction in future
-                instructions_result = self.instructions_extractor.extract(section_soup, text)
-                # Instructions extractor returns Optional[str], not tuple
-                if isinstance(instructions_result, tuple):
-                    instructions = instructions_result[0]  # type: ignore[assignment]
-                else:
-                    instructions = instructions_result  # type: ignore[assignment]
-
-                metadata_result = self.metadata_extractor.extract(section_soup, text, title)
-                # Metadata extractor returns Dict[str, str]
-                if isinstance(metadata_result, dict):
-                    metadata = metadata_result
-                else:
-                    metadata = {}
-
-                # Create recipe object
-                recipe = Recipe(
-                    title=title,
-                    book=book_title,
-                    author=author,
+                recipe = self._extract_candidate(
+                    section_soup,
+                    title,
+                    book_title,
+                    author,
                     chapter=chapter,
                     epub_section=item_name,
-                    ingredients=ingredients,
-                    instructions=instructions,
-                    serves=metadata.get("serves"),
-                    prep_time=metadata.get("prep_time"),
-                    cook_time=metadata.get("cook_time"),
-                    cooking_method=metadata.get("cooking_method"),
-                    protein_type=metadata.get("protein_type"),
-                    raw_content=text if self.config.include_raw_content else None,
                 )
-
-                # Store extraction metadata
-                if ingredients_metadata:
-                    merge_extraction_metadata(recipe.metadata, ingredients_metadata, "ingredients")
-
-                # Add A/B test metadata if testing is enabled (deprecated)
-                if ab_metadata:
-                    recipe.metadata["ab_test"] = ab_metadata
-
-                # Calculate quality score
-                recipe.quality_score = self.scorer.score_recipe(recipe)
-
-                # Filter by quality threshold
-                min_score = self.config.min_quality_score or 0
-                if recipe.quality_score < min_score:
-                    continue
-
-                recipes.append(recipe)
-                logger.debug("Extracted recipe [%d]: %s (score: %d)",
-                           len(recipes), recipe.title[:60], recipe.quality_score)
+                if recipe is not None:
+                    recipes.append(recipe)
+                    logger.debug(
+                        "Extracted recipe [%d]: %s",
+                        len(recipes),
+                        recipe.title[:60],
+                    )
 
         logger.info("Extracted %d recipes from EPUB", len(recipes))
         return recipes
+
+    @staticmethod
+    def _find_sections(content: bytes) -> list[tuple[str, BeautifulSoup]]:
+        """Find candidate recipe sections in an EPUB document."""
+        main_soup = HTMLParser.parse_html(content)
+        sections = []
+        for section in main_soup.find_all("section"):
+            if section.get("epub:type") == "part" or len(section.get_text(strip=True)) <= 100:
+                continue
+
+            title = str(section.get("aria-label") or "Untitled")
+            for header in section.find_all(["h1", "h2", "h3", "h4", "h5"], limit=3):
+                header_text = header.get_text(strip=True)
+                if len(header_text) > 3 and not header_text.isdigit():
+                    title = header_text
+                    break
+
+            section_soup = BeautifulSoup("<html><body></body></html>", "html.parser")
+            if section_soup.body is not None:
+                section_soup.body.append(copy.copy(section))
+            sections.append((title, section_soup))
+
+        if sections:
+            return sections
+
+        section_tag = main_soup.find("section")
+        title_value = section_tag.get("title") if section_tag is not None else None
+        section_title = title_value if isinstance(title_value, str) else None
+        return HTMLParser.split_by_headers(main_soup, section_title=section_title)
 
     def extract_from_section(
         self, section_soup, title: str = "", book_name: str = "", author: str = ""
     ) -> Optional[Recipe]:
         """Extract a single recipe from HTML section."""
+        return self._extract_candidate(section_soup, title, book_name, author)
+
+    def _extract_candidate(
+        self,
+        section_soup,
+        title: str,
+        book_name: str,
+        author: str,
+        *,
+        chapter: str | None = None,
+        epub_section: str | None = None,
+    ) -> Optional[Recipe]:
+        from_epub = epub_section is not None
         text = HTMLParser.extract_text(section_soup)
+        if from_epub and len(text) < 100:
+            return None
 
         if not self.validator.is_valid_recipe(section_soup, text, title):
             return None
@@ -318,6 +239,30 @@ class EPUBRecipeExtractor:
             section_soup, text, use_patterns=use_patterns
         )
         ingredients, ingredients_metadata = normalize_extraction_result(ingredients_result)  # type: ignore[arg-type]
+
+        ab_metadata = None
+        if from_epub and self.ab_runner:
+            warnings.warn(
+                "A/B testing is deprecated. Use use_pattern_extraction=True instead.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+            ab_metadata = self.ab_runner.compare_extractors(
+                control_extractor=self.ingredients_extractor,
+                treatment_extractor=self.treatment_extractor,
+                soup=section_soup,
+                text=text,
+                control_result=ingredients,
+            )
+
+            # Optionally use treatment result in production
+            if self.ab_runner.should_use_treatment(ab_metadata):
+                ingredients = ab_metadata["new_ingredients"]
+                logger.info("A/B Test: Using treatment extraction method")
+
+        if from_epub and not ingredients:
+            logger.debug("Skipping %r: No ingredients found", title)
+            return None
 
         instructions_result = self.instructions_extractor.extract(section_soup, text)
         # Instructions extractor returns Optional[str], not tuple
@@ -337,6 +282,8 @@ class EPUBRecipeExtractor:
             title=title,
             book=book_name,
             author=author,
+            chapter=chapter,
+            epub_section=epub_section,
             ingredients=ingredients,
             instructions=instructions,
             serves=metadata.get("serves"),
@@ -351,11 +298,8 @@ class EPUBRecipeExtractor:
         if ingredients_metadata:
             merge_extraction_metadata(recipe.metadata, ingredients_metadata, "ingredients")
 
-        recipe.quality_score = self.scorer.score_recipe(recipe)
-
-        min_score = self.config.min_quality_score or 0
-        if recipe.quality_score < min_score:
-            return None
+        if ab_metadata:
+            recipe.metadata["ab_test"] = ab_metadata
 
         return recipe
 

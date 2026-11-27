@@ -42,7 +42,7 @@ class RecipeValidator:
         # Very generic component names (but allow if longer/more specific)
         r"^(?:the\s+)?(?:filling|topping|coating|crust)$",
         # Notes and tips sections
-        r"^(?:note|tip|variation)s?:?$",
+        r"^(?:recipe\s+)?(?:note|tip|variation)s?:?$",
         r"^(?:indoor|outdoor)\s+alternative:?.*$",  # Catches "indoor alternative:..."
         r"^(?:chef(?:'s)?|cook(?:'s)?)\s+(?:note|tip)s?:?$",
     ]

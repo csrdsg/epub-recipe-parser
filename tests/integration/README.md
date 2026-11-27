@@ -7,7 +7,7 @@ Comprehensive integration tests for the EPUB Recipe Parser's pattern-based extra
 ### Run All Tests
 ```bash
 # Using the test runner (recommended)
-uv run python run_integration_tests.py
+uv run python scripts/run_integration_tests.py
 
 # Or directly with pytest
 uv run pytest tests/integration/test_integration.py -v
@@ -27,7 +27,6 @@ uv run pytest tests/integration/test_integration.py::TestDatabaseIntegration -v
 # Export functionality
 uv run pytest tests/integration/test_integration.py::TestExportIntegration -v
 
-# Quality validation
 uv run pytest tests/integration/test_integration.py::TestQualityValidation -v
 
 # Pattern detectors
@@ -41,7 +40,6 @@ Tests the complete extraction pipeline from EPUB to Recipe objects.
 
 - **test_full_extraction_pipeline**: Validates complete EPUB extraction
 - **test_confidence_scores_calculated**: Verifies pattern-based confidence scoring
-- **test_extraction_with_different_quality_thresholds**: Tests quality filtering
 
 ### 2. TestABComparison
 Tests A/B comparison between legacy and pattern-based methods.
@@ -54,7 +52,6 @@ Tests database storage and retrieval with confidence scores.
 
 - **test_save_and_load_with_confidence**: Database round-trip with metadata
 - **test_ab_test_statistics**: A/B statistics aggregation
-- **test_query_by_quality_score**: Quality-based filtering
 
 ### 4. TestExportIntegration
 Tests JSON and Markdown export with confidence scores.
@@ -63,11 +60,9 @@ Tests JSON and Markdown export with confidence scores.
 - **test_markdown_export_readable**: Markdown format validation
 
 ### 5. TestQualityValidation
-Tests quality validation and confidence correlation.
+Tests extraction confidence.
 
-- **test_confidence_correlates_with_quality**: Quality tier analysis
 - **test_average_confidence_reasonable**: Confidence score validation
-- **test_high_quality_extraction_accuracy**: High-quality recipe completeness
 
 ### 6. TestPatternExtractorMethods
 Tests individual pattern-based extractor methods.
@@ -78,18 +73,15 @@ Tests individual pattern-based extractor methods.
 
 ## Test Data
 
-The tests use a real EPUB cookbook:
-- **File:** `101 Things to Do with a Smoker (Eliza Cross) (Z-Library).epub`
-- **Location:** `/Users/csrdsg/projects/open_fire_cooking/books/`
-- **Expected Recipes:** ~96 recipes
+The cookbook-dependent tests use a local copy of *101 Things to Do with a
+Smoker* by Eliza Cross. Set `EPUB_RECIPE_TEST_BOOK` to its absolute file path.
+The expected extraction result is approximately 96 recipes.
 
-## Test Results (Last Run: 2025-12-06)
+```sh
+EPUB_RECIPE_TEST_BOOK="/absolute/path/to/cookbook.epub" uv run pytest tests/integration -v
+```
 
-```
-✅ 16/16 tests passed
-⏱️  Execution time: 2.88 seconds
-📊 Success rate: 100%
-```
+The independent detector tests run without the cookbook.
 
 ## What's Tested
 
@@ -110,7 +102,6 @@ The tests use a real EPUB cookbook:
 - ✅ Recipe storage with metadata
 - ✅ Confidence score preservation
 - ✅ JSON serialization/deserialization
-- ✅ Query filtering by quality
 
 ### Export Functionality
 - ✅ JSON export with all metadata
@@ -153,10 +144,10 @@ The `run_integration_tests.py` script provides:
 ### Test Runner Options
 ```bash
 # Show help
-uv run python run_integration_tests.py --help
+uv run python scripts/run_integration_tests.py --help
 
 # Show coverage summary
-uv run python run_integration_tests.py --coverage
+uv run python scripts/run_integration_tests.py --coverage
 ```
 
 ## Architecture Validated
@@ -210,6 +201,6 @@ When adding new tests:
 
 ## See Also
 
-- **Full Report:** `/Users/csrdsg/projects/epub-recipe-parser/INTEGRATION_TEST_REPORT.md`
-- **Test Runner:** `/Users/csrdsg/projects/epub-recipe-parser/run_integration_tests.py`
-- **Test File:** `/Users/csrdsg/projects/epub-recipe-parser/tests/integration/test_integration.py`
+- [Historical integration report](../../docs/archive/INTEGRATION_TEST_REPORT.md)
+- [Integration test runner](../../scripts/run_integration_tests.py)
+- [Integration tests](test_integration.py)

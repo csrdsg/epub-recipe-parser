@@ -1,0 +1,13 @@
+{
+  "name": "epub-structure-renderer",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "dependencies": {
+    "knap": "0.6.0",
+    "linkedom": "0.18.15",
+    "turndown": "7.2.5"
+  }
+}

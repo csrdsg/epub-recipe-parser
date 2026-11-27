@@ -106,7 +106,6 @@ tags:
   - grilling
 cooking_method: "grilling"
 protein_type: "beef"
-quality_score: 90
 serves: "4"
 prep_time: "15 minutes"
 cook_time: "15 minutes"
@@ -128,7 +127,6 @@ cook_time: "15 minutes"
 1. Step with [[Cross Reference]]
 
 ## Metadata
-- **Quality Score:** 90/100
 - **Serves:** 4
 - **Book:** Book Name
 ```
@@ -150,7 +148,6 @@ Auto-generated `README.md` includes:
 - Total recipe count and export stats
 - List of books with recipe counts
 - List of cooking methods with recipe counts
-- Average quality score
 - Navigation instructions
 - Wiki-link usage guide
 
@@ -179,8 +176,8 @@ Auto-generated `README.md` includes:
 # Export all recipes organized by book
 uv run epub-parser export recipes.db --format vault
 
-# Export high-quality recipes organized by cooking method
-uv run epub-parser export recipes.db --format vault --organize-by method --min-quality 70
+# Export recipes organized by cooking method
+uv run epub-parser export recipes.db --format vault --organize-by method
 
 # Export to specific directory with flat structure
 uv run epub-parser export recipes.db --format vault --organize-by flat --output my-vault
@@ -194,7 +191,6 @@ uv run epub-parser export recipes.db --format vault -v
 - `--format vault`: Use Obsidian vault export format
 - `--organize-by [book|method|flat]`: Choose organization strategy (default: book)
 - `--output PATH`: Specify output directory (default: recipes-vault)
-- `--min-quality N`: Filter recipes by quality score
 - `-v, --verbose`: Show detailed export information
 
 ## Programmatic Usage
@@ -206,7 +202,7 @@ from epub_recipe_parser.exporters import ObsidianVaultExporter
 
 # Load recipes
 db = RecipeDatabase("recipes.db")
-recipes = db.query(min_quality=70)
+recipes = db.query()
 
 # Export to vault
 exporter = ObsidianVaultExporter()
@@ -309,8 +305,8 @@ uv run epub-parser extract cookbook.epub --output recipes.db
 # 2. Review and search
 uv run epub-parser search recipes.db "grilled"
 
-# 3. Export high-quality recipes to Obsidian
-uv run epub-parser export recipes.db --format vault --min-quality 70 --organize-by book
+# 3. Export recipes to Obsidian
+uv run epub-parser export recipes.db --format vault --organize-by book
 
 # 4. Open in Obsidian
 # Launch Obsidian → Open folder as vault → Select recipes-vault/

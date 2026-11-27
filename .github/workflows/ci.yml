@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.12', '3.14']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: src/epub_recipe_parser/structured/runtime/package-lock.json
+      - run: uv sync --locked --extra dev --python ${{ matrix.python-version }}
+      - run: npm ci --prefix src/epub_recipe_parser/structured/runtime
+      - run: uv run --locked --extra dev --python ${{ matrix.python-version }} pytest -q
+
+  distributions:
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv build --python 3.12
+      - name: Verify the installed wheel
+        shell: bash
+        run: |
+          wheel=$(realpath dist/*.whl)
+          version=$(uv run --isolated --no-project --python 3.12 --with "$wheel" epub-parser --version)
+          echo "$version"
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            [[ "$version" == *"version ${GITHUB_REF_NAME#v}" ]]
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/
+          if-no-files-found: error

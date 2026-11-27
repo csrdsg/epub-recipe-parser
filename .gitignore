@@ -35,7 +35,10 @@ ENV/
 
 # Testing
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .coverage
+.coverage.*
 htmlcov/
 .tox/
 
@@ -57,13 +60,15 @@ site/
 
 # Project specific
 test_output/
+/*-cookbook-results.*/
 *.epub
 books/
 recipes/
+node_modules/
 
 # Development/debug files
-test_*.py
-debug_*.py
-analyze_*.py
-demo_*.py
-*_temp.py
+/test_*.py
+/debug_*.py
+/analyze_*.py
+/demo_*.py
+/*_temp.py

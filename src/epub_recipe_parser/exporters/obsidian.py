@@ -12,6 +12,7 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Set
 from collections import defaultdict
+from unicodedata import normalize
 
 from epub_recipe_parser.core.models import Recipe
 
@@ -76,7 +77,8 @@ class ObsidianVaultExporter:
             "duplicates": len(self.duplicate_names),
         }
 
-        # Export each recipe
+        # Reserve the root index and account for case-insensitive filesystems.
+        used_paths = {"readme.md"}
         for recipe in recipes:
             try:
                 # Determine target directory
@@ -86,12 +88,24 @@ class ObsidianVaultExporter:
                 # Generate safe filename
                 filename = self._generate_filename(recipe)
                 file_path = target_dir / filename
+                path_key = normalize("NFC", file_path.relative_to(output_dir).as_posix()).casefold()
+                if path_key in used_paths:
+                    stats["duplicates"] += 1
+                    stem = file_path.stem
+                    suffix = 2
+                    while path_key in used_paths:
+                        file_path = target_dir / f"{stem}-{suffix}.md"
+                        path_key = normalize(
+                            "NFC", file_path.relative_to(output_dir).as_posix()
+                        ).casefold()
+                        suffix += 1
 
                 # Generate markdown content
                 content = self._format_recipe_markdown(recipe)
 
                 # Write file
                 file_path.write_text(content, encoding="utf-8")
+                used_paths.add(path_key)
 
                 stats["success"] += 1
                 logger.debug(f"Exported: {recipe.title} -> {file_path}")
@@ -289,8 +303,6 @@ class ObsidianVaultExporter:
         lines.append("")
         metadata_items = []
 
-        if recipe.quality_score:
-            metadata_items.append(f"- **Quality Score:** {recipe.quality_score}/100")
 
         if recipe.serves:
             metadata_items.append(f"- **Serves:** {recipe.serves}")
@@ -353,8 +365,6 @@ class ObsidianVaultExporter:
         if recipe.protein_type:
             lines.append(f'protein_type: "{self._escape_yaml(recipe.protein_type)}"')
 
-        if recipe.quality_score:
-            lines.append(f"quality_score: {recipe.quality_score}")
 
         if recipe.serves:
             lines.append(f'serves: "{self._escape_yaml(recipe.serves)}"')
@@ -464,7 +474,7 @@ class ObsidianVaultExporter:
 
         if stats["duplicates"] > 0:
             lines.append(
-                f"- **Duplicate Names:** {stats['duplicates']} (resolved with book suffixes)"
+                f"- **Duplicate Names:** {stats['duplicates']} (resolved with filename suffixes)"
             )
 
         lines.extend(["", "## Recipe Statistics", ""])
@@ -472,14 +482,12 @@ class ObsidianVaultExporter:
         # Calculate statistics
         books: Dict[str, int] = defaultdict(int)
         methods: Dict[str, int] = defaultdict(int)
-        avg_quality = sum(r.quality_score for r in recipes) / len(recipes) if recipes else 0
 
         for recipe in recipes:
             books[recipe.book] += 1
             if recipe.cooking_method:
                 methods[recipe.cooking_method] += 1
 
-        lines.append(f"- **Average Quality Score:** {avg_quality:.1f}/100")
         lines.append(f"- **Number of Books:** {len(books)}")
         lines.append(f"- **Cooking Methods:** {len(methods)}")
         lines.append("")

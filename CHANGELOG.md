@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0]
+
+### Added
+
+- Offline `structure` export with a nested EPUB table of contents, document
+  trees in JSON, and Markdown rendered with a customizable Knap template.
+- A user manual covering the CLI, Python API, and multiprocessing example.
+
+### Changed
+
+- Resolve recipe chapter names from nested and fragment-bearing EPUB links.
+- Use the same recipe validation and assembly code for EPUB and standalone
+  HTML extraction.
+- Preserve a distinct Obsidian note for each recipe when filenames collide
+  within an export.
+
+### Removed
+
+- Recipe-level quality scoring, score cutoffs, and score-based result ordering.
+  Remove `--min-quality`, `min_quality_score`, `min_quality`, and explicit
+  `quality_score` fields from scripts and integrations. Existing SQLite
+  databases remain readable and ingredient detection confidence remains
+  available in extraction metadata.
+
 ## [3.0.0] - 2025-12-10
 
 ### Added

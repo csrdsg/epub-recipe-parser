@@ -3,34 +3,34 @@
 ## Prerequisites
 
 - Python 3.10 or higher
-- `uv` package manager (recommended) or `pip`
+- `uv` package manager
+- Node.js 20.19 or newer for Knap structured export
 
 ## Installation
 
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/epub-recipe-parser.git
+git clone https://github.com/csrdsg/epub-recipe-parser.git
 cd epub-recipe-parser
 ```
 
 ### 2. Create Virtual Environment
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+uv venv
 ```
 
 ### 3. Install Dependencies
 
-Using `uv` (recommended):
 ```bash
-uv pip install -e ".[dev]"
+uv sync --extra dev
 ```
 
-Or using `pip`:
+For Knap structured export, also install its pinned Node dependencies:
+
 ```bash
-pip install -e ".[dev]"
+npm ci --prefix src/epub_recipe_parser/structured/runtime
 ```
 
 ## Development Tools
@@ -93,7 +93,8 @@ epub-recipe-parser/
 │   └── utils/                 # Shared utilities
 ├── tests/                     # Test suite
 ├── scripts/                   # Utility scripts
-├── docs/                      # Documentation
+├── docs/guides/               # Current user and developer guides
+├── docs/archive/              # Historical plans, research, and reports
 └── pyproject.toml            # Project configuration
 ```
 
@@ -122,7 +123,7 @@ epub-recipe-parser/
 rm -rf .pytest_cache
 
 # Reinstall in development mode
-uv pip install -e ".[dev]"
+uv sync --extra dev
 ```
 
 ### Import Errors
@@ -141,6 +142,7 @@ uv run mypy src/
 
 ## Resources
 
-- [Contributing Guide](../CONTRIBUTING.md)
-- [Claude Code Guide](../CLAUDE.md)
-- [Development Documentation](./development/)
+- [User manual](USER_MANUAL.md)
+- [Cookbook integration tests](../../tests/integration/README.md)
+- [Release process](RELEASING.md)
+- [Development Documentation](../archive/development/)

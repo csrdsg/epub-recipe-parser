@@ -37,7 +37,6 @@ class Recipe:
     tags: List[str] = field(default_factory=list)
     cooking_method: Optional[str] = None
     protein_type: Optional[str] = None
-    quality_score: int = 0
     raw_content: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -58,7 +57,6 @@ class Recipe:
             "tags": self.tags,
             "cooking_method": self.cooking_method,
             "protein_type": self.protein_type,
-            "quality_score": self.quality_score,
             "raw_content": self.raw_content,
             "metadata": self.metadata,
         }
@@ -68,7 +66,6 @@ class Recipe:
 class ExtractionConfig:
     """Configuration for core extraction behavior."""
 
-    min_quality_score: int = 20
     extract_toc: bool = True
     validate_recipes: bool = True
     split_by_headers: bool = True
@@ -76,6 +73,7 @@ class ExtractionConfig:
     include_raw_content: bool = True
     custom_validators: List[Callable] = field(default_factory=list)
     use_pattern_extraction: bool = True  # New: Enable pattern-based extraction (default: True)
+    use_defuddle_cleaning: bool = False  # New: Use defuddle to clean HTML before extraction
 
 
 @dataclass
@@ -115,7 +113,6 @@ class ExtractorConfig:
 
     # Backward compatibility: Flat configuration parameters
     # These are deprecated but maintained for compatibility
-    min_quality_score: Optional[int] = None
     extract_toc: Optional[bool] = None
     validate_recipes: Optional[bool] = None
     split_by_headers: Optional[bool] = None
@@ -123,6 +120,7 @@ class ExtractorConfig:
     include_raw_content: Optional[bool] = None
     custom_validators: Optional[List[Callable]] = None
     use_pattern_extraction: Optional[bool] = None  # New: Pattern-based extraction toggle
+    use_defuddle_cleaning: Optional[bool] = None  # New: Defuddle HTML cleaning toggle
     enable_ab_testing: Optional[bool] = None
     ab_test_use_new: Optional[bool] = None
     ab_test_log_level: Optional[str] = None
@@ -131,8 +129,6 @@ class ExtractorConfig:
     def __post_init__(self):
         """Handle backward compatibility by mapping flat params to nested configs."""
         # Map extraction params if provided
-        if self.min_quality_score is not None:
-            self.extraction.min_quality_score = self.min_quality_score
         if self.extract_toc is not None:
             self.extraction.extract_toc = self.extract_toc
         if self.validate_recipes is not None:
@@ -147,6 +143,8 @@ class ExtractorConfig:
             self.extraction.custom_validators = self.custom_validators
         if self.use_pattern_extraction is not None:
             self.extraction.use_pattern_extraction = self.use_pattern_extraction
+        if self.use_defuddle_cleaning is not None:
+            self.extraction.use_defuddle_cleaning = self.use_defuddle_cleaning
 
         # Map A/B testing params if provided
         if self.enable_ab_testing is not None:
@@ -164,8 +162,6 @@ class ExtractorConfig:
             self.ab_testing.success_threshold = self.ab_test_success_threshold
 
         # Expose nested config values as properties for backward compatibility
-        if self.min_quality_score is None:
-            self.min_quality_score = self.extraction.min_quality_score
         if self.extract_toc is None:
             self.extract_toc = self.extraction.extract_toc
         if self.validate_recipes is None:
@@ -176,6 +172,8 @@ class ExtractorConfig:
             self.include_raw_content = self.extraction.include_raw_content
         if self.use_pattern_extraction is None:
             self.use_pattern_extraction = self.extraction.use_pattern_extraction
+        if self.use_defuddle_cleaning is None:
+            self.use_defuddle_cleaning = self.extraction.use_defuddle_cleaning
 
         if self.enable_ab_testing is None:
             self.enable_ab_testing = self.ab_testing.enabled

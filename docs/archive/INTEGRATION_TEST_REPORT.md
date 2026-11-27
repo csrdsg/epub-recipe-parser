@@ -155,7 +155,7 @@ class TestPatternExtractorMethods:
 ```
 
 ### 2. Test Runner Script
-**Location:** `/Users/csrdsg/projects/epub-recipe-parser/run_integration_tests.py`
+**Location:** `/Users/csrdsg/projects/epub-recipe-parser/scripts/run_integration_tests.py`
 **Features:**
 - Colored terminal output
 - Detailed progress reporting
@@ -211,7 +211,7 @@ Tests verify that confidence scores are:
 ### Running All Integration Tests
 ```bash
 # Using test runner script
-uv run python run_integration_tests.py
+uv run python scripts/run_integration_tests.py
 
 # Using pytest directly
 uv run pytest tests/integration/test_integration.py -v

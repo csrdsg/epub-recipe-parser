@@ -6,7 +6,7 @@ This is a standalone example showing how to add multiprocessing to the batch com
 Copy the relevant parts to src/epub_recipe_parser/cli/main.py to integrate.
 
 Usage:
-    python multiprocessing_implementation.py /path/to/cookbooks/ --workers 4
+    uv run python -m examples.multiprocessing /path/to/cookbooks/ --workers 4
 """
 
 import sys
@@ -17,21 +17,20 @@ import multiprocessing
 import time
 
 # Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from epub_recipe_parser.core import EPUBRecipeExtractor, ExtractorConfig, Recipe
+from epub_recipe_parser.core import EPUBRecipeExtractor, Recipe
 from epub_recipe_parser.storage import RecipeDatabase
 
 
 def process_epub_worker(
-    epub_path: Path, min_quality: int
+    epub_path: Path
 ) -> Tuple[Path, List[Recipe], Optional[Exception]]:
     """
     Worker function to process a single EPUB file in a separate process.
 
     Args:
         epub_path: Path to the EPUB file
-        min_quality: Minimum quality score for recipes
 
     Returns:
         Tuple of (epub_path, recipes, error)
@@ -41,8 +40,7 @@ def process_epub_worker(
     """
     try:
         # Create extractor in this process
-        config = ExtractorConfig(min_quality_score=min_quality)
-        extractor = EPUBRecipeExtractor(config=config)
+        extractor = EPUBRecipeExtractor()
 
         # Extract recipes
         recipes = extractor.extract_from_epub(epub_path)
@@ -54,14 +52,13 @@ def process_epub_worker(
         return (epub_path, [], e)
 
 
-def batch_process_sequential(epub_files: List[Path], output: str, min_quality: int) -> dict:
+def batch_process_sequential(epub_files: List[Path], output: str) -> dict:
     """
     Process EPUB files sequentially (current implementation).
 
     Args:
         epub_files: List of EPUB file paths
         output: Database output path
-        min_quality: Minimum quality score
 
     Returns:
         Dictionary with results
@@ -69,8 +66,7 @@ def batch_process_sequential(epub_files: List[Path], output: str, min_quality: i
     print(f"\nProcessing {len(epub_files)} files sequentially...")
     start_time = time.perf_counter()
 
-    config = ExtractorConfig(min_quality_score=min_quality)
-    extractor = EPUBRecipeExtractor(config=config)
+    extractor = EPUBRecipeExtractor()
     db = RecipeDatabase(output)
 
     all_recipes = []
@@ -98,7 +94,7 @@ def batch_process_sequential(epub_files: List[Path], output: str, min_quality: i
 
 
 def batch_process_parallel(
-    epub_files: List[Path], output: str, min_quality: int, max_workers: Optional[int] = None
+    epub_files: List[Path], output: str, max_workers: Optional[int] = None
 ) -> dict:
     """
     Process EPUB files in parallel using multiprocessing.
@@ -106,7 +102,6 @@ def batch_process_parallel(
     Args:
         epub_files: List of EPUB file paths
         output: Database output path
-        min_quality: Minimum quality score
         max_workers: Number of worker processes (None = auto-detect)
 
     Returns:
@@ -128,7 +123,7 @@ def batch_process_parallel(
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         # Submit all EPUB files for processing
         future_to_epub = {
-            executor.submit(process_epub_worker, epub_file, min_quality): epub_file
+            executor.submit(process_epub_worker, epub_file): epub_file
             for epub_file in epub_files
         }
 
@@ -183,7 +178,7 @@ def print_results(results: dict, method: str):
             print(f"  • {epub_file.name}: {error}")
 
 
-def compare_sequential_vs_parallel(directory: Path, min_quality: int = 20):
+def compare_sequential_vs_parallel(directory: Path):
     """
     Compare sequential vs parallel processing on the same files.
 
@@ -201,12 +196,12 @@ def compare_sequential_vs_parallel(directory: Path, min_quality: int = 20):
 
     # Sequential processing
     output_seq = "recipes_sequential.db"
-    results_seq = batch_process_sequential(epub_files, output_seq, min_quality)
+    results_seq = batch_process_sequential(epub_files, output_seq)
     print_results(results_seq, "Sequential")
 
     # Parallel processing (auto-detect workers)
     output_par = "recipes_parallel.db"
-    results_par = batch_process_parallel(epub_files, output_par, min_quality)
+    results_par = batch_process_parallel(epub_files, output_par)
     print_results(results_par, "Parallel")
 
     # Comparison
@@ -239,9 +234,6 @@ def main():
     parser.add_argument("directory", help="Directory containing EPUB files")
     parser.add_argument("--output", "-o", default="recipes.db", help="Output database file")
     parser.add_argument(
-        "--min-quality", "-q", type=int, default=20, help="Minimum quality score (0-100)"
-    )
-    parser.add_argument(
         "--workers", "-w", type=int, default=None, help="Number of parallel workers (default: auto)"
     )
     parser.add_argument("--sequential", action="store_true", help="Use sequential processing")
@@ -261,14 +253,14 @@ def main():
 
     if args.compare:
         # Benchmark mode: compare both approaches
-        compare_sequential_vs_parallel(directory, args.min_quality)
+        compare_sequential_vs_parallel(directory)
     elif args.sequential:
         # Sequential mode
-        results = batch_process_sequential(epub_files, args.output, args.min_quality)
+        results = batch_process_sequential(epub_files, args.output)
         print_results(results, "Sequential")
     else:
         # Parallel mode (default)
-        results = batch_process_parallel(epub_files, args.output, args.min_quality, args.workers)
+        results = batch_process_parallel(epub_files, args.output, args.workers)
         print_results(results, "Parallel")
 
 
@@ -289,11 +281,10 @@ To integrate this into the main CLI (src/epub_recipe_parser/cli/main.py):
     @cli.command()
     @click.argument("directory", type=click.Path(exists=True))
     @click.option("--output", "-o", default="recipes.db", help="Output database file")
-    @click.option("--min-quality", "-q", default=20, help="Minimum quality score (0-100)")
     @click.option("--pattern", "-p", default="*.epub", help="File pattern to match")
     @click.option("--workers", "-w", type=int, default=None, help="Number of parallel workers (default: auto)")
     @click.option("--sequential", is_flag=True, help="Process files sequentially")
-    def batch(directory: str, output: str, min_quality: int, pattern: str, workers: int | None, sequential: bool):
+    def batch(directory: str, output: str, pattern: str, workers: int | None, sequential: bool):
         '''Batch process multiple EPUB files.'''
         dir_path = Path(directory)
         epub_files = list(dir_path.glob(pattern))
@@ -322,8 +313,7 @@ To integrate this into the main CLI (src/epub_recipe_parser/cli/main.py):
 
         if max_workers == 1:
             # Sequential processing
-            config = ExtractorConfig(min_quality_score=min_quality)
-            extractor = EPUBRecipeExtractor(config=config)
+            extractor = EPUBRecipeExtractor()
 
             for epub_file in epub_files:
                 try:
@@ -337,7 +327,7 @@ To integrate this into the main CLI (src/epub_recipe_parser/cli/main.py):
             # Parallel processing
             with ProcessPoolExecutor(max_workers=max_workers) as executor:
                 future_to_epub = {
-                    executor.submit(process_epub_worker, epub_file, min_quality): epub_file
+                    executor.submit(process_epub_worker, epub_file): epub_file
                     for epub_file in epub_files
                 }
 

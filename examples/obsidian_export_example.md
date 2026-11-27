@@ -17,7 +17,7 @@ uv run epub-parser export recipes.db --format vault --organize-by method --outpu
 uv run epub-parser export recipes.db --format vault --organize-by flat --output my-recipes-vault
 
 # Filter by minimum quality score
-uv run epub-parser export recipes.db --format vault --min-quality 70 --output my-recipes-vault
+uv run epub-parser export recipes.db --format vault --output my-recipes-vault
 ```
 
 ## Vault Organization Options
@@ -75,7 +75,6 @@ tags:
   - grilling
 cooking_method: "grilling"
 protein_type: "beef"
-quality_score: 90
 serves: "4"
 prep_time: "15 minutes"
 cook_time: "15 minutes"
@@ -97,7 +96,6 @@ Season steak. Grill to desired doneness. Serve with [[Chimichurri]].
 
 ## Metadata
 
-- **Quality Score:** 90/100
 - **Serves:** 4
 - **Prep Time:** 15 minutes
 - **Cook Time:** 15 minutes
@@ -186,13 +184,13 @@ The wiki-links still use the recipe name only: `[[Grilled Steak]]` and Obsidian 
 
 ```bash
 # 1. Extract recipes from EPUB
-uv run epub-parser extract open_fire_cooking.epub --output recipes.db --min-quality 20
+uv run epub-parser extract open_fire_cooking.epub --output recipes.db
 
 # 2. Review recipes in database
 uv run epub-parser search recipes.db "steak"
 
-# 3. Export high-quality recipes to Obsidian vault
-uv run epub-parser export recipes.db --format vault --min-quality 70 --organize-by book --output cookbook-vault
+# 3. Export recipes to Obsidian vault
+uv run epub-parser export recipes.db --format vault --organize-by book --output cookbook-vault
 
 # 4. Open in Obsidian
 # Launch Obsidian → Open folder as vault → Select cookbook-vault/
@@ -200,7 +198,6 @@ uv run epub-parser export recipes.db --format vault --min-quality 70 --organize-
 
 ## Tips for Best Results
 
-1. **Quality filtering:** Use `--min-quality 50` or higher to export only well-extracted recipes
 2. **Organization:** Choose organization method based on your needs:
    - `book` for keeping cookbook structure
    - `method` for browsing by cooking technique
@@ -219,7 +216,7 @@ from epub_recipe_parser.exporters import ObsidianVaultExporter
 
 # Load recipes from database
 db = RecipeDatabase("recipes.db")
-recipes = db.query(min_quality=70)
+recipes = db.query()
 
 # Export to vault
 exporter = ObsidianVaultExporter()
