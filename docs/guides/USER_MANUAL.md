@@ -105,6 +105,15 @@ recipe index. Imports preserve existing notes and skip recipes already
 identified by their `source_id`. Use `--organize-by method` or
 `--organize-by flat` to change where new notes go.
 
+Pass a directory to import its EPUB files in filename order. Add `--dry-run`
+to preview added, skipped, and renamed notes without changing the vault.
+Directory imports report each book separately. An unreadable book produces
+a nonzero exit status, and other books can still be imported.
+
+```sh
+uv run epub-parser import-vault ./cookbooks "/path/to/Obsidian Vault" --dry-run
+```
+
 To export from a SQLite collection, use `export`.
 
 ```sh
@@ -134,6 +143,7 @@ Use append mode whenever the target vault contains edits you want to preserve.
 uv run epub-parser analyze "cookbook.epub" --verbose
 uv run epub-parser validate "cookbook.epub" cookbook-results/recipes.db
 uv run epub-parser validate "cookbook.epub" collection.db --book "Exact Cookbook Title"
+uv run epub-parser validate "cookbook.epub" cookbook-results/recipes.db --format json
 ```
 
 Use `analyze` before extraction to inspect the EPUB's document structure and
@@ -142,6 +152,11 @@ likely recipe entries in the table of contents and count missing chapters,
 titles, and instructions. Use `--book` to select a book from a multi-book
 database. Some EPUBs list only chapters or omit recipes, so check unmatched
 entries against the source and review the extracted text in the Markdown export.
+
+The JSON report includes counts and EPUB document paths for missing fields, plus
+links for unmatched TOC entries. `toc_match_rate` is null when there are no usable
+recipe entries for comparison. Image-only books are flagged when the reading
+spine has images and lacks selectable text. Recipe extraction requires text.
 
 ## Preserve a book's source structure
 

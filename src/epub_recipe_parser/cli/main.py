@@ -2,6 +2,7 @@
 
 import json
 import sys
+from collections import Counter
 import click
 from pathlib import Path
 from rich.console import Console
@@ -30,7 +31,7 @@ cli.add_command(structure_command)
 
 
 @cli.command("import-vault")
-@click.argument("epub_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.argument("epub_file", type=click.Path(exists=True, path_type=Path))
 @click.argument("vault_directory", type=click.Path(file_okay=False, path_type=Path))
 @click.option(
     "--organize-by",
@@ -39,26 +40,62 @@ cli.add_command(structure_command)
     show_default=True,
     help="Folder layout for new notes.",
 )
-def import_vault(epub_file: Path, vault_directory: Path, organize_by: str):
-    """Extract an EPUB directly into an Obsidian vault."""
-    try:
-        recipes = EPUBRecipeExtractor().extract_from_epub(epub_file)
-        if not recipes:
-            click.echo("No recipes found.")
-            return
+@click.option("--dry-run", is_flag=True, help="Preview changes without writing to the vault.")
+def import_vault(epub_file: Path, vault_directory: Path, organize_by: str, dry_run: bool):
+    """Import an EPUB or a directory of EPUBs into an Obsidian vault."""
+    batch = epub_file.is_dir()
+    paths = (
+        sorted(p for p in epub_file.iterdir() if p.is_file() and p.suffix.lower() == ".epub")
+        if batch else [epub_file]
+    )
+    extractor = EPUBRecipeExtractor()
+    recipes = []
+    sources = {}
+    results = {path: Counter() for path in paths}
+    errors = 0
+    for path in paths:
+        try:
+            extracted = extractor.extract_from_epub(path)
+        except (OSError, ValueError) as error:
+            click.echo(f"{path.name}: {error}", err=True)
+            results[path]["error"] += 1
+            errors += 1
+            continue
+        recipes.extend(extracted)
+        sources.update((id(recipe), path) for recipe in extracted)
 
-        stats = ObsidianVaultExporter().export_vault(
-            recipes, vault_directory, organize_by=organize_by, append=True
-        )
-    except (OSError, ValueError) as error:
-        raise click.ClickException(str(error)) from error
+    def report_note(recipe, action, destination):
+        results[sources[id(recipe)]][action] += 1
+        if dry_run:
+            click.echo(f"{action}: {recipe.title}" + (f" → {destination}" if destination else ""))
 
-    click.echo(f"Added {stats['success']} recipe notes to {vault_directory}.")
-    preserved = stats["total"] - stats["success"] - stats["failed"]
-    if preserved:
-        click.echo(f"Preserved {preserved} existing recipe notes.")
-    if stats["failed"]:
-        raise click.ClickException(f"Failed to write {stats['failed']} recipe notes.")
+    if recipes:
+        try:
+            stats = ObsidianVaultExporter().export_vault(
+                recipes, vault_directory, organize_by=organize_by, append=True,
+                dry_run=dry_run, on_note=report_note,
+            )
+        except (OSError, ValueError) as error:
+            raise click.ClickException(str(error)) from error
+        verb = "Would add" if dry_run else "Added"
+        click.echo(f"{verb} {stats['success']} recipe notes to {vault_directory}.")
+        preserved = sum(result["skip"] for result in results.values())
+        if preserved:
+            verb = "Would preserve" if dry_run else "Preserved"
+            click.echo(f"{verb} {preserved} existing recipe notes.")
+        errors += stats["failed"]
+    elif not errors:
+        click.echo("No recipes found.")
+
+    if batch:
+        for path, result in results.items():
+            if not result["error"]:
+                click.echo(
+                    f"{path.name}: {result['add']} new, {result['rename']} renamed, "
+                    f"{result['skip']} skipped, {result['fail']} failed."
+                )
+    if errors:
+        raise click.ClickException(f"Import finished with {errors} errors.")
 
 
 @cli.command()
@@ -269,9 +306,9 @@ def analyze(epub_file: str, verbose: bool):
 @click.argument("epub_file", type=click.Path(exists=True))
 @click.argument("database", type=click.Path(exists=True))
 @click.option("--book", help="Exact book title to validate in a multi-book database")
-def validate(epub_file: str, database: str, book: str | None):
+@click.option("--format", "output_format", type=click.Choice(["text", "json"]), default="text")
+def validate(epub_file: str, database: str, book: str | None, output_format: str):
     """Validate extraction against TOC."""
-    console.print("\n[bold]✓ Validating extraction[/bold]\n")
 
     # Get extracted recipes from database
     db = RecipeDatabase(database)
@@ -284,23 +321,54 @@ def validate(epub_file: str, database: str, book: str | None):
     toc_analyzer = TOCAnalyzer()
     report = toc_analyzer.validate_extraction(all_recipes, epub_file)
 
+    checks = (
+        ("chapter", lambda r: (r.chapter or "").strip().casefold() in ("", "unknown")),
+        ("title", lambda r: r.title.strip().casefold() in ("", "untitled")),
+        ("ingredients", lambda r: not (r.ingredients or "").strip()),
+        ("instructions", lambda r: not (r.instructions or "").strip()),
+    )
+    diagnostics = {
+        field: [
+            {"title": r.title, "href": r.epub_section, "source_id": r.source_id}
+            for r in all_recipes if missing(r)
+        ]
+        for field, missing in checks
+    }
+    image_only = report.image_only is True
+    if output_format == "json":
+        click.echo(json.dumps({
+            "toc_count": report.toc_count,
+            "extracted_count": report.extracted_count,
+            "matched": report.matched,
+            "toc_match_rate": report.coverage if report.toc_count and not image_only else None,
+            "image_only": image_only,
+            "unmatched_toc": {
+                "count": len(report.missing),
+                "entries": [{"title": entry.title, "href": entry.href} for entry in report.missing],
+            },
+            "missing_fields": {
+                field: {"count": len(entries), "entries": entries}
+                for field, entries in diagnostics.items()
+            },
+        }, ensure_ascii=False, indent=2))
+        return
+
     console.print("[bold]📊 Validation Results:[/bold]")
     console.print(f"  Likely recipe entries in the TOC: {report.toc_count}")
     console.print(f"  Recipes extracted: {report.extracted_count}")
     console.print(f"  Matched: {report.matched}")
-    if report.toc_count:
+    if report.toc_count and not image_only:
         console.print(f"  TOC match rate: {report.coverage*100:.1f}%")
+    else:
+        console.print("  TOC match rate unavailable without usable recipe-level entries.")
+    if image_only:
+        console.print("  Image-only EPUB. Recipe extraction requires selectable text.")
     console.print("  Tables of contents may list only chapters or omit recipes.")
 
-    diagnostics = (
-        ("Missing chapter", [r.title for r in all_recipes if r.chapter in (None, "", "Unknown")]),
-        ("Missing title", [r.epub_section or "HTML section" for r in all_recipes if
-                           r.title.strip().casefold() in ("", "untitled")]),
-        ("Missing instructions", [r.title for r in all_recipes if not (r.instructions or "").strip()]),
-    )
-    for label, entries in diagnostics:
-        preview = f" ({', '.join(entries[:3])})" if entries else ""
-        console.print(f"  {label}: {len(entries)}{preview}", markup=False)
+    for field, entries in diagnostics.items():
+        examples = [entry["title"] or entry["href"] or "HTML section" for entry in entries[:3]]
+        preview = f" ({', '.join(examples)})" if examples else ""
+        console.print(f"  Missing {field}: {len(entries)}{preview}", markup=False)
 
     if report.missing:
         console.print(f"\n[yellow]⚠️  Unmatched TOC entries: {len(report.missing)}[/yellow]")

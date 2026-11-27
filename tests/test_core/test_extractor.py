@@ -493,3 +493,65 @@ def test_inferred_structure_rejects_numbered_business_names():
     )
 
     assert find_structured_sections(soup) == []
+
+
+def test_mixed_layout_epub_extracts_exact_components(tmp_path):
+    from ebooklib import epub
+
+    book = epub.EpubBook()
+    book.set_identifier("mixed-fixture")
+    book.set_title("Mixed Fixture")
+    book.set_language("en")
+    page = epub.EpubHtml(title="Dinner", file_name="dinner.xhtml", uid="dinner")
+    page.content = """
+    <article itemscope itemtype="https://schema.org/Recipe">
+      <h2 itemprop="name">Tomato Salad</h2>
+      <p itemprop="recipeIngredient">2 tomatoes</p>
+      <p itemprop="recipeInstructions">Slice the tomatoes.</p>
+    </article>
+    <h2 id="toast">Olive Oil Toast</h2>
+    <ul><li>2 slices bread</li><li>1 tablespoon olive oil</li></ul>
+    <ol><li>Toast the bread.</li><li>Drizzle with olive oil.</li></ol>
+    """
+    book.add_item(page)
+    book.add_item(epub.EpubNav())
+    book.spine = [page]
+    book.toc = (page,)
+    path = tmp_path / "mixed.epub"
+    epub.write_epub(str(path), book)
+
+    rows = EPUBRecipeExtractor().extract_from_epub(path)
+    assert [(row.title, row.chapter, row.ingredients, row.instructions) for row in rows] == [
+        ("Tomato Salad", "Dinner", "- 2 tomatoes", "Slice the tomatoes."),
+        (
+            "Olive Oil Toast", "Dinner", "- 2 slices bread\n- 1 tablespoon olive oil",
+            "1. Toast the bread.\n\n2. Drizzle with olive oil.",
+        ),
+    ]
+
+
+@pytest.mark.parametrize("content", [
+    "<h2>Formatting Guide</h2><p>Prepare the input, add a value, and combine objects. "
+    "The instruction explains how to format each ingredient conceptually.</p>"
+    '<pre class="programlisting">print(format(data))</pre>',
+    '<h2 id="visit">Plan Your Visit</h2>'
+    '<p class="listing">73 in the Square: This wine bar serves small plates until 11pm.</p>'
+    '<p class="listing">18 at the Wharf: The pizza place serves lunch until 3pm.</p>'
+    '<p class="advice">Take a walk along the harbor and watch for boats.</p>',
+])
+def test_non_cookbook_epubs_extract_no_recipes(tmp_path, content):
+    from ebooklib import epub
+
+    book = epub.EpubBook()
+    book.set_identifier("non-cookbook")
+    book.set_title("Non-cookbook Fixture")
+    book.set_language("en")
+    page = epub.EpubHtml(title="Guide", file_name="guide.xhtml")
+    page.content = content
+    book.add_item(page)
+    book.add_item(epub.EpubNav())
+    book.spine = [page]
+    path = tmp_path / "guide.epub"
+    epub.write_epub(str(path), book)
+
+    assert EPUBRecipeExtractor().extract_from_epub(path) == []

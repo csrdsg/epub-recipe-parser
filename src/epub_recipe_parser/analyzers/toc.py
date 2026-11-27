@@ -4,11 +4,16 @@ from pathlib import Path
 from typing import List, Optional
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+import logging
 import re
+import ebooklib
 from ebooklib import epub
+from epub_recipe_parser.utils.html import HTMLParser
 
 from epub_recipe_parser.core.models import Recipe
 from epub_recipe_parser.utils.patterns import EXCLUDE_KEYWORDS
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -31,6 +36,7 @@ class ValidationReport:
     coverage: float
     missing: List[TOCEntry]
     book_name: str
+    image_only: bool = False
 
 
 class TOCAnalyzer:
@@ -41,7 +47,7 @@ class TOCAnalyzer:
         try:
             book = epub.read_epub(str(epub_path))
         except Exception as e:
-            print(f"   ❌ Error reading EPUB: {e}")
+            logger.warning("Error reading EPUB table of contents: %s", e)
             return []
 
         toc = book.toc
@@ -173,6 +179,7 @@ class TOCAnalyzer:
         """Validate extraction against TOC."""
         epub_path = Path(epub_path)
         toc_recipes = self.extract_toc_recipes(epub_path)
+        image_only = not recipes and self._is_image_only(epub_path)
         chapter_titles = {
             " ".join(recipe.chapter.casefold().split()) for recipe in recipes if recipe.chapter
         }
@@ -191,6 +198,7 @@ class TOCAnalyzer:
                 coverage=0.0,
                 missing=[],
                 book_name=epub_path.name,
+                image_only=image_only,
             )
 
         # Match TOC entries with extracted recipes
@@ -225,4 +233,29 @@ class TOCAnalyzer:
             coverage=coverage,
             missing=missing,
             book_name=epub_path.name,
+            image_only=image_only,
         )
+
+    @staticmethod
+    def _is_image_only(path: Path) -> bool:
+        try:
+            book = epub.read_epub(str(path))
+        except Exception:
+            return False
+        if not isinstance(book, epub.EpubBook):
+            return False
+        has_images = False
+        for idref, linear in book.spine:
+            item = book.get_item_with_id(idref)
+            if (
+                item is None or item.get_type() != ebooklib.ITEM_DOCUMENT
+                or linear == "no" or isinstance(item, epub.EpubNav) or "nav" in item.properties
+            ):
+                continue
+            body = HTMLParser.parse_html(item.get_content()).body
+            if body is None:
+                continue
+            if body.get_text(strip=True):
+                return False
+            has_images = has_images or body.find(["img", "image"]) is not None
+        return has_images

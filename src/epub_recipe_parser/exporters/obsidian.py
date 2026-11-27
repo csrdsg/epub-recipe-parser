@@ -11,7 +11,7 @@ import json
 import re
 import logging
 from pathlib import Path
-from typing import List, Dict, Set
+from typing import Callable, List, Dict, Set
 from collections import defaultdict
 from unicodedata import normalize
 
@@ -41,6 +41,8 @@ class ObsidianVaultExporter:
         organize_by: str = "book",
         *,
         append: bool = False,
+        dry_run: bool = False,
+        on_note: Callable[[Recipe, str, Path | None], None] | None = None,
     ) -> Dict[str, int]:
         """Export recipes to an Obsidian vault.
 
@@ -49,6 +51,8 @@ class ObsidianVaultExporter:
             output_dir: Path to the output vault directory
             organize_by: Organization method - 'book', 'method', or 'flat'
             append: Preserve existing notes and rebuild the cumulative index
+            dry_run: Plan destinations and report counts without changing the vault
+            on_note: Optional callback for each add, rename, skip, or failure
 
         Returns:
             Dictionary with export statistics
@@ -68,7 +72,10 @@ class ObsidianVaultExporter:
 
         # Create output directory
         output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        if dry_run and not append:
+            raise ValueError("Dry run requires append mode")
+        if not dry_run:
+            output_dir.mkdir(parents=True, exist_ok=True)
 
         existing_notes, used_paths = self._vault_inventory(output_dir) if append else ([], set())
         source_ids = {note.source_id for note in existing_notes if note.source_id}
@@ -89,19 +96,23 @@ class ObsidianVaultExporter:
         written = []
         for recipe in recipes:
             if append and recipe.source_id in source_ids:
+                if on_note:
+                    on_note(recipe, "skip", None)
                 continue
             try:
                 # Determine target directory
                 target_dir = self._get_target_directory(output_dir, recipe, organize_by)
                 if append and target_dir.is_symlink():
                     raise ValueError("Cannot append recipe notes through a symbolic link")
-                target_dir.mkdir(parents=True, exist_ok=True)
+                if target_dir.exists() and not target_dir.is_dir():
+                    raise ValueError(f"Vault folder is occupied by a file: {target_dir}")
 
                 # Generate safe filename
                 filename = self._generate_filename(recipe)
                 file_path = target_dir / filename
                 path_key = normalize("NFC", file_path.relative_to(output_dir).as_posix()).casefold()
-                if path_key in used_paths:
+                renamed = path_key in used_paths
+                if renamed:
                     stats["duplicates"] += 1
                     stem = file_path.stem
                     suffix = 2
@@ -113,23 +124,29 @@ class ObsidianVaultExporter:
                         suffix += 1
 
                 # Generate markdown content
-                content = self._format_recipe_markdown(recipe)
-
-                # Write file
-                with file_path.open("x" if append else "w", encoding="utf-8") as note:
-                    note.write(content)
+                if not dry_run:
+                    target_dir.mkdir(parents=True, exist_ok=True)
+                    content = self._format_recipe_markdown(recipe)
+                    with file_path.open("x" if append else "w", encoding="utf-8") as note:
+                        note.write(content)
                 used_paths.add(path_key)
                 if recipe.source_id:
                     source_ids.add(recipe.source_id)
                 written.append(recipe)
 
                 stats["success"] += 1
+                if on_note:
+                    on_note(recipe, "rename" if renamed else "add", file_path)
                 logger.debug(f"Exported: {recipe.title} -> {file_path}")
 
             except Exception as e:
                 logger.error(f"Failed to export recipe '{recipe.title}': {e}")
                 stats["failed"] += 1
+                if on_note:
+                    on_note(recipe, "fail", None)
 
+        if dry_run:
+            return stats
         # Create vault index file
         try:
             self._create_vault_index(

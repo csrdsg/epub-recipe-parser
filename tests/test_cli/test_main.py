@@ -475,3 +475,62 @@ def test_import_vault_directly_preserves_edited_notes(runner, tmp_path):
     assert len(list(vault.glob("*/*.md"))) == 2
     assert "**Total Recipes:** 2" in (vault / "README.md").read_text(encoding="utf-8")
     assert not list(tmp_path.rglob("*.db"))
+
+
+def test_directory_vault_preview_shares_collision_names_with_import(runner, tmp_path):
+    from pathlib import Path
+    from shutil import copyfile
+
+    sample = Path(__file__).resolve().parents[2] / "examples/sample-cookbook/sample.epub"
+    books = tmp_path / "books"
+    books.mkdir()
+    copyfile(sample, books / "valid.EPUB")
+    (books / "bad.epub").write_text("not an EPUB")
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "README.md").write_text("# Custom index")
+    (vault / "Ginger-Tofu.md").write_text("Personal edit")
+    args = ["import-vault", str(books), str(vault), "--organize-by", "flat"]
+    preview = runner.invoke(cli, [*args, "--dry-run"])
+    assert preview.exit_code == 1
+    assert "Ginger-Tofu-2.md" in preview.output
+    assert len(list(vault.iterdir())) == 2
+    result = runner.invoke(cli, args)
+    assert result.exit_code == 1
+    assert "valid.EPUB: 1 new, 1 renamed, 0 skipped, 0 failed" in result.output
+    assert (vault / "Ginger-Tofu-2.md").is_file()
+    assert (vault / "Ginger-Tofu.md").read_text() == "Personal edit"
+    assert (vault / "README.md").read_text() == "# Custom index"
+    assert "**Total Recipes:** 2" in (vault / "Recipe Vault Index.md").read_text()
+    retry = runner.invoke(cli, args)
+    assert "Preserved 2 existing recipe notes" in retry.output
+
+
+def test_validate_json_identifies_image_only_epub(runner, tmp_path):
+    import base64
+    from ebooklib import epub
+    from epub_recipe_parser.storage import RecipeDatabase
+
+    book = epub.EpubBook()
+    book.set_identifier("image-fixture")
+    book.set_title("Scanned fixture")
+    book.set_language("en")
+    page = epub.EpubHtml(title="Page", file_name="page.xhtml")
+    page.content = '<img src="page.png" alt="Scanned page"/>'
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKCYAAAAASUVORK5CYII="
+    )
+    book.add_item(epub.EpubItem(file_name="page.png", media_type="image/png", content=png))
+    book.add_item(page)
+    book.add_item(epub.EpubNav())
+    book.spine = [page]
+    path = tmp_path / "scan.epub"
+    epub.write_epub(str(path), book)
+    database = tmp_path / "recipes.db"
+    RecipeDatabase(database)
+    result = runner.invoke(cli, ["validate", str(path), str(database), "--format", "json"])
+    assert result.exit_code == 0, result.output
+    report = json.loads(result.output)
+    assert report["image_only"]
+    assert report["toc_match_rate"] is None
+    assert report["missing_fields"]["ingredients"] == {"count": 0, "entries": []}
