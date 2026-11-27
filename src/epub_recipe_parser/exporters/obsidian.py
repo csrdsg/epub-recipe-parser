@@ -7,6 +7,7 @@ This module exports recipe databases to Obsidian-compatible markdown vaults with
 - Configurable folder organization (by book, cooking method, or flat)
 """
 
+import json
 import re
 import logging
 from pathlib import Path
@@ -38,6 +39,8 @@ class ObsidianVaultExporter:
         recipes: List[Recipe],
         output_dir: Path,
         organize_by: str = "book",
+        *,
+        append: bool = False,
     ) -> Dict[str, int]:
         """Export recipes to an Obsidian vault.
 
@@ -45,6 +48,7 @@ class ObsidianVaultExporter:
             recipes: List of Recipe objects to export
             output_dir: Path to the output vault directory
             organize_by: Organization method - 'book', 'method', or 'flat'
+            append: Preserve existing notes and rebuild the cumulative index
 
         Returns:
             Dictionary with export statistics
@@ -66,8 +70,9 @@ class ObsidianVaultExporter:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Build recipe title mapping for cross-reference resolution
-        self._build_title_map(recipes)
+        existing_notes, used_paths = self._vault_inventory(output_dir) if append else ([], set())
+        source_ids = {note.source_id for note in existing_notes if note.source_id}
+        self._build_title_map(existing_notes + [r for r in recipes if r.source_id not in source_ids])
 
         # Track statistics
         stats = {
@@ -78,11 +83,18 @@ class ObsidianVaultExporter:
         }
 
         # Reserve the root index and account for case-insensitive filesystems.
-        used_paths = {"readme.md"}
+        used_paths.add("readme.md")
+        if append:
+            used_paths.add("recipe vault index.md")
+        written = []
         for recipe in recipes:
+            if append and recipe.source_id in source_ids:
+                continue
             try:
                 # Determine target directory
                 target_dir = self._get_target_directory(output_dir, recipe, organize_by)
+                if append and target_dir.is_symlink():
+                    raise ValueError("Cannot append recipe notes through a symbolic link")
                 target_dir.mkdir(parents=True, exist_ok=True)
 
                 # Generate safe filename
@@ -104,8 +116,12 @@ class ObsidianVaultExporter:
                 content = self._format_recipe_markdown(recipe)
 
                 # Write file
-                file_path.write_text(content, encoding="utf-8")
+                with file_path.open("x" if append else "w", encoding="utf-8") as note:
+                    note.write(content)
                 used_paths.add(path_key)
+                if recipe.source_id:
+                    source_ids.add(recipe.source_id)
+                written.append(recipe)
 
                 stats["success"] += 1
                 logger.debug(f"Exported: {recipe.title} -> {file_path}")
@@ -116,11 +132,50 @@ class ObsidianVaultExporter:
 
         # Create vault index file
         try:
-            self._create_vault_index(output_dir, recipes, organize_by, stats)
+            self._create_vault_index(
+                output_dir, existing_notes + written, organize_by, stats, append=append
+            )
         except Exception as e:
             logger.warning(f"Failed to create vault index: {e}")
 
         return stats
+
+    @staticmethod
+    def _vault_inventory(vault_dir: Path) -> tuple[list[Recipe], set[str]]:
+        """Read identifiers and index fields from existing generated notes."""
+        recipes = []
+        paths = set()
+        for path in vault_dir.rglob("*"):
+            paths.add(normalize("NFC", path.relative_to(vault_dir).as_posix()).casefold())
+            if path.suffix.casefold() != ".md" or not path.is_file() or path.is_symlink():
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeError):
+                continue
+            frontmatter, separator, body = text.removeprefix("---\n").partition("\n---\n")
+            if not text.startswith("---\n") or not separator:
+                continue
+            fields = {}
+            for line in frontmatter.splitlines():
+                key, _, value = line.partition(": ")
+                if key not in {"title", "book", "source_id", "cooking_method"}:
+                    continue
+                value = value.strip()
+                if value.startswith('"'):
+                    try:
+                        value = json.loads(value)
+                    except ValueError:
+                        continue
+                elif len(value) >= 2 and value.startswith("'") and value.endswith("'"):
+                    value = value[1:-1].replace("''", "'")
+                if value:
+                    fields[key] = value
+            if fields.get("title") and fields.get("book") and (
+                fields.get("source_id") or "\n## Metadata\n" in body
+            ):
+                recipes.append(Recipe(**fields))
+        return recipes, paths
 
     def _build_title_map(self, recipes: List[Recipe]) -> None:
         """Build a mapping of normalized recipe titles to actual titles.
@@ -342,6 +397,8 @@ class ObsidianVaultExporter:
 
         # Required fields
         lines.append(f'title: "{self._escape_yaml(recipe.title)}"')
+        if recipe.source_id:
+            lines.append(f"source_id: {json.dumps(recipe.source_id)}")
 
         if recipe.book:
             lines.append(f'book: "{self._escape_yaml(recipe.book)}"')
@@ -392,9 +449,7 @@ class ObsidianVaultExporter:
             return ""
 
         # Escape double quotes
-        text = text.replace('"', '\\"')
-
-        return text
+        return json.dumps(text, ensure_ascii=False)[1:-1]
 
     def _parse_recipe_references(self, text: str) -> str:
         """Parse and convert recipe references to wiki-style links.
@@ -449,6 +504,8 @@ class ObsidianVaultExporter:
         recipes: List[Recipe],
         organize_by: str,
         stats: Dict[str, int],
+        *,
+        append: bool = False,
     ) -> None:
         """Create an index file for the vault.
 
@@ -459,15 +516,29 @@ class ObsidianVaultExporter:
             stats: Export statistics
         """
         index_path = vault_dir / "README.md"
+        if append:
+            for name in ("README.md", "Recipe Vault Index.md"):
+                index_path = vault_dir / name
+                if index_path.is_symlink():
+                    continue
+                if not index_path.exists() or (
+                    index_path.is_file()
+                    and index_path.read_text(encoding="utf-8").startswith(
+                        "# Recipe Vault\n\nThis Obsidian vault contains "
+                    )
+                ):
+                    break
+            else:
+                raise ValueError("Vault index paths are occupied by existing notes")
 
         lines = [
             "# Recipe Vault",
             "",
-            f"This Obsidian vault contains {stats['success']} recipes extracted from EPUB cookbooks.",
+            f"This Obsidian vault contains {len(recipes)} recipes extracted from EPUB cookbooks.",
             "",
             "## Export Information",
             "",
-            f"- **Total Recipes:** {stats['success']}",
+            f"- **Total Recipes:** {len(recipes)}",
             f"- **Organization:** By {organize_by}",
             f"- **Failed Exports:** {stats['failed']}",
         ]

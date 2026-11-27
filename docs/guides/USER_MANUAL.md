@@ -35,8 +35,10 @@ and future exports.
 
 Add `--verbose` to `extract` for a preview of the first few recipe titles and
 more detail on errors. When you omit `-o`, extraction uses `recipes.db` in the
-working directory. Extraction adds rows to an existing database. Use a fresh
-database path when re-running a cookbook for comparison.
+working directory. Re-importing the same EPUB into an existing database skips
+recipes already saved from that source. When upgrading an older database, an
+unchanged extraction can acquire its source identifier without losing its tags.
+Use a fresh database to compare parser versions or to review a different edition.
 
 The parser uses HTML sections and headings to find recipes, then looks for
 ingredients, directions, and metadata. Chapter names come from the EPUB table of
@@ -92,19 +94,32 @@ note per recipe and an index. Choose `--organize-by method` for folders by
 cooking method or `--organize-by flat` for a single directory of recipe notes.
 The default organization is `book`. See the [Obsidian export guide](OBSIDIAN_EXPORT_FEATURE.md).
 
+To add another book and preserve existing notes, export it with `--append`.
+
+```sh
+uv run epub-parser extract "second-cookbook.epub" -o second-cookbook.db
+uv run epub-parser export second-cookbook.db -f vault --append -o cookbook-vault
+```
+
+Append mode skips recipes whose `source_id` is already in the vault and updates
+the index to include existing generated notes. Keep the `source_id` property
+when editing a note. Older notes without that property still count in the index.
+Use append mode whenever the target vault contains edits you want to preserve.
+
 ## Inspect a cookbook and check extraction coverage
 
 ```sh
 uv run epub-parser analyze "cookbook.epub" --verbose
 uv run epub-parser validate "cookbook.epub" cookbook-results/recipes.db
+uv run epub-parser validate "cookbook.epub" collection.db --book "Exact Cookbook Title"
 ```
 
 Use `analyze` before extraction to inspect the EPUB's document structure and
 recipe patterns. Use `validate` afterward to compare extracted titles with
-recipe entries detected in the table of contents. A single-book database makes
-the comparison easier to interpret. Check reported misses against the EPUB, since
-a heading or table-of-contents title can differ from the extracted recipe title.
-Review the Markdown export to check the ingredient and instruction text itself.
+likely recipe entries in the table of contents and count missing chapters,
+titles, and instructions. Use `--book` to select a book from a multi-book
+database. Some EPUBs list only chapters or omit recipes, so check unmatched
+entries against the source and review the extracted text in the Markdown export.
 
 ## Preserve a book's source structure
 
@@ -206,6 +221,6 @@ database. This workflow is deprecated.
 
 - **The EPUB cannot be opened.** Check the path and confirm the file opens in an EPUB reader.
 - **Recipes or chapters are missing.** Run `analyze` and `validate`, then use `structure` to inspect the table of contents and source HTML.
-- **An export has too many copies.** Re-extract into a fresh database path.
+- **An older database already contains duplicates.** Extract into a fresh database to rebuild it.
 - **The structure command reports missing dependencies.** Run the npm command from the error and retry with a new output directory.
 - **A command rejects an option.** Run `uv run epub-parser <command> --help` to see the supported arguments.

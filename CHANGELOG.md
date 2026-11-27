@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+- Recognize recipe headings and ingredient and instruction blocks used in
+  *Project Griddle* and *Asada*.
+- Recover chapters for EPUBs split into multiple numbered files and report missing
+  chapters, titles, and instructions in `validate`.
+- Skip repeat imports of the same EPUB recipes, and support `export --format vault
+  --append` to preserve existing notes and update the cumulative index.
+
 ## [4.0.0]
 
 ### Added

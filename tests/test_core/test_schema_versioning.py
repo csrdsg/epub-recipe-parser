@@ -19,14 +19,14 @@ def test_schema_version_table_created(temp_db):
 
 
 def test_initial_schema_version(temp_db):
-    """Test that initial schema version is set to 2 (after metadata migration)."""
+    """Test that initial schema version is set after the source identifier migration."""
     db = RecipeDatabase(temp_db)
 
     with db._get_connection() as conn:
         cursor = conn.cursor()
         version = db._get_schema_version(cursor)
 
-    assert version == 2, "Initial schema version should be 2 (after metadata migration)"
+    assert version == 3
 
 
 def test_schema_version_has_description(temp_db):
@@ -58,7 +58,7 @@ def test_existing_database_version_preserved(temp_db):
         cursor = conn.cursor()
         version2 = db2._get_schema_version(cursor)
 
-    assert version1 == version2 == 2, "Schema version should be preserved at version 2"
+    assert version1 == version2 == 3
 
 
 def test_get_schema_version_empty_database(tmp_path):
@@ -88,16 +88,16 @@ def test_set_schema_version(temp_db):
     with db._get_connection() as conn:
         cursor = conn.cursor()
 
-        # Set a new version (version 2 already exists from migration)
-        db._set_schema_version(cursor, 3, "Test migration")
+        # Set a new version (version 3 already exists from migration)
+        db._set_schema_version(cursor, 4, "Test migration")
         conn.commit()
 
         # Verify it was set
-        cursor.execute("SELECT version, description FROM schema_version WHERE version = 3")
+        cursor.execute("SELECT version, description FROM schema_version WHERE version = 4")
         result = cursor.fetchone()
 
     assert result is not None
-    assert result[0] == 3
+    assert result[0] == 4
     assert result[1] == "Test migration"
 
 
@@ -108,15 +108,15 @@ def test_multiple_schema_versions(temp_db):
     with db._get_connection() as conn:
         cursor = conn.cursor()
 
-        # Add additional versions (version 2 already exists from migration)
-        db._set_schema_version(cursor, 3, "Third version")
+        # Add additional versions (version 3 already exists from migration)
         db._set_schema_version(cursor, 4, "Fourth version")
+        db._set_schema_version(cursor, 5, "Fifth version")
         conn.commit()
 
         # Get current version
         version = db._get_schema_version(cursor)
 
-    assert version == 4, "Should return the maximum version"
+    assert version == 5, "Should return the maximum version"
 
 
 def test_schema_version_timestamp(temp_db):

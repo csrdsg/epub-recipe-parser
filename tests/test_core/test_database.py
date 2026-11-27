@@ -86,3 +86,25 @@ def test_count_with_filters(temp_db):
 
     count = db.count(filters={"book": "Book A"})
     assert count == 2
+
+
+def test_reimport_adopts_an_unchanged_legacy_row(temp_db):
+    db = RecipeDatabase(temp_db)
+    recipe = Recipe(
+        title="Tomato Salad", book="Cookbook", epub_section="sides.xhtml",
+        ingredients="2 tomatoes", instructions="Slice the tomatoes.", tags=["favorite"],
+    )
+    assert db.save_recipes([recipe]) == 1
+    with db._get_connection() as conn:
+        conn.execute("DROP INDEX idx_recipes_source_id")
+        conn.execute("ALTER TABLE recipes DROP COLUMN source_id")
+        conn.execute("DELETE FROM schema_version WHERE version = 3")
+        conn.commit()
+
+    db = RecipeDatabase(temp_db)
+    recipe.source_id = "tomato-salad"
+    assert db.save_recipes([recipe]) == 0
+    assert db.count() == 1
+    saved = db.query()[0]
+    assert saved.source_id == recipe.source_id
+    assert saved.tags == ["favorite"]

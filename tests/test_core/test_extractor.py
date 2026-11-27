@@ -390,3 +390,56 @@ class TestEPUBRecipeExtractor:
 
         if recipe:
             assert recipe.raw_content is None
+
+
+@pytest.mark.parametrize(
+    ("heading_tag", "heading_class", "components"),
+    [
+        (
+            "h2",
+            "RH",
+            "<ul><li>2 tomatoes</li></ul><ol><li>Slice the tomatoes.</li></ol>",
+        ),
+        (
+            "p",
+            "rechead",
+            '<p class="ing">2 tomatoes</p><p class="noindentt">Slice the tomatoes.</p>',
+        ),
+    ],
+)
+def test_recipe_headings_split_chapter_and_preserve_components(
+    tmp_path, heading_tag, heading_class, components
+):
+    from ebooklib import epub
+    from epub_recipe_parser.storage import RecipeDatabase
+
+    book = epub.EpubBook()
+    book.set_identifier("heading-fixture")
+    book.set_title("Fixture Cookbook")
+    book.set_language("en")
+    chapter = epub.EpubHtml(title="Sides", file_name="sides_split_001.xhtml", uid="chapter")
+    chapter.content = "<h1>Sides</h1>"
+    recipes_document = epub.EpubHtml(title="Recipes", file_name="sides_split_002.xhtml", uid="recipes")
+    sections = "".join(
+        f'<{heading_tag} class="{heading_class}">{title}</{heading_tag}>{components}'
+        for title in ("Tomato Salad", "Tomato Side")
+    )
+    recipes_document.content = f"<section><h1>Sides</h1>{sections}</section>"
+    for item in (chapter, recipes_document, epub.EpubNav()):
+        book.add_item(item)
+    book.toc = (chapter,)
+    book.spine = ["nav", chapter, recipes_document]
+    path = tmp_path / "fixture.epub"
+    epub.write_epub(str(path), book)
+
+    rows = EPUBRecipeExtractor().extract_from_epub(path)
+
+    assert [row.title for row in rows] == ["Tomato Salad", "Tomato Side"]
+    assert all(row.chapter == "Sides" and row.ingredients == "- 2 tomatoes" for row in rows)
+    assert all(row.instructions and "Slice the tomatoes." in row.instructions for row in rows)
+    assert len({row.source_id for row in rows if row.source_id}) == 2
+
+    database = RecipeDatabase(tmp_path / "recipes.db")
+    assert database.save_recipes(rows) == 2
+    assert database.save_recipes(EPUBRecipeExtractor().extract_from_epub(path)) == 0
+    assert database.count() == 2

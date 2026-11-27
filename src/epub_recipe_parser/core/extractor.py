@@ -1,7 +1,9 @@
 """Main EPUB recipe extractor."""
 
 import copy
+import hashlib
 import logging
+import re
 import warnings
 from pathlib import Path
 from typing import List, Optional
@@ -31,6 +33,8 @@ from epub_recipe_parser.utils.extraction import (
 from epub_recipe_parser.utils.defuddle import clean_section_html
 
 logger = logging.getLogger(__name__)
+_RECIPE_HEADING = "h2[class~='rh' i], h3[class~='rh' i], .rechead, .recipe-title, .recipe-heading"
+_SPLIT_DOCUMENT = re.compile(r"_split_\d+(?=\.[^./]+$)")
 
 
 def _chapter_lookup(entries):
@@ -139,6 +143,17 @@ class EPUBRecipeExtractor:
         book_title = title_meta[0][0] if title_meta else epub_path.stem
 
         chapters_by_path, chapters_by_title = _chapter_lookup(book.toc)
+        split_chapters: dict[str, set[str]] = {}
+        for path, chapter in chapters_by_path.items():
+            if _SPLIT_DOCUMENT.search(path):
+                group = _SPLIT_DOCUMENT.sub("", path)
+                split_chapters.setdefault(group, set()).add(chapter)
+
+        with epub_path.open("rb") as source:
+            digest = hashlib.sha256()
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+        book_id = digest.hexdigest()
 
         # Get all document items
         doc_items = list(book.get_items_of_type(ebooklib.ITEM_DOCUMENT))
@@ -148,8 +163,15 @@ class EPUBRecipeExtractor:
         for item in doc_items:
             item_name = item.get_name()
             document_path = unquote(item_name)
+            chapter = chapters_by_path.get(document_path)
+            if chapter is None and _SPLIT_DOCUMENT.search(document_path):
+                group = _SPLIT_DOCUMENT.sub("", document_path)
+                matches = split_chapters.get(group, set())
+                if len(matches) == 1:
+                    chapter = next(iter(matches))
 
             sections = self._find_sections(item.get_content())
+            title_occurrences: dict[str, int] = {}
             for section_title, section_soup in sections:
                 if self.config.extraction.use_defuddle_cleaning:
                     original_html = str(section_soup)
@@ -158,18 +180,22 @@ class EPUBRecipeExtractor:
                         section_soup = HTMLParser.parse_html(cleaned_html.encode())
 
                 title = clean_text(section_title) if section_title else ""
-                chapter = chapters_by_title.get(
-                    (document_path, title.casefold()), chapters_by_path.get(document_path, "Unknown")
+                title_key = title.casefold()
+                title_occurrences[title_key] = title_occurrences.get(title_key, 0) + 1
+                recipe_chapter = chapters_by_title.get(
+                    (document_path, title_key), chapter or "Unknown"
                 )
                 recipe = self._extract_candidate(
                     section_soup,
                     title,
                     book_title,
                     author,
-                    chapter=chapter,
+                    chapter=recipe_chapter,
                     epub_section=item_name,
                 )
                 if recipe is not None:
+                    origin = f"{book_id}\0{document_path}\0{title_key}\0{title_occurrences[title_key]}"
+                    recipe.source_id = hashlib.sha256(origin.encode()).hexdigest()
                     recipes.append(recipe)
                     logger.debug(
                         "Extracted recipe [%d]: %s",
@@ -184,6 +210,49 @@ class EPUBRecipeExtractor:
     def _find_sections(content: bytes) -> list[tuple[str, BeautifulSoup]]:
         """Find candidate recipe sections in an EPUB document."""
         main_soup = HTMLParser.parse_html(content)
+        marked_headings = main_soup.select(_RECIPE_HEADING)
+        if marked_headings:
+            sections = []
+            heading_ids = {id(heading) for heading in marked_headings}
+            for heading in marked_headings:
+                title = heading.get_text(" ", strip=True)
+                section_soup = BeautifulSoup("", "html.parser")
+                section_soup.append(copy.copy(heading))
+                for sibling in heading.find_next_siblings():
+                    if id(sibling) in heading_ids or sibling.name == "h1":
+                        break
+                    if sibling.name == "aside":
+                        continue
+                    section_soup.append(copy.copy(sibling))
+                ingredient_list = section_soup.find("ul", recursive=False)
+                directions_list = section_soup.find("ol", recursive=False)
+                if (
+                    ingredient_list
+                    and directions_list
+                    and any(node is directions_list for node in ingredient_list.next_siblings)
+                ):
+                    ingredient_list["data-recipe-component"] = "ingredients"
+                    directions_list["data-recipe-component"] = "instructions"
+                elif heading.name == "p" and "rechead" in heading.get("class", []):
+                    paragraphs = section_soup.find_all("p", recursive=False)
+                    ingredients = [p for p in paragraphs if "ing" in p.get("class", [])]
+                    instructions = [
+                        p for p in paragraphs if {"noindentt", "noindents"}.intersection(
+                            p.get("class", [])
+                        )
+                    ]
+                    if ingredients and instructions:
+                        for element in ingredients:
+                            element["data-recipe-component"] = "ingredients"
+                        for element in instructions:
+                            element["data-recipe-component"] = "instructions"
+                sections.append((title, section_soup))
+            return sections
+
+        outer_sections = main_soup.body.find_all("section", recursive=False) if main_soup.body else []
+        if len(outer_sections) == 1 and outer_sections[0].get("role") == "doc-introduction":
+            return []
+
         sections = []
         for section in main_soup.find_all("section"):
             if section.get("epub:type") == "part" or len(section.get_text(strip=True)) <= 100:
@@ -227,7 +296,7 @@ class EPUBRecipeExtractor:
     ) -> Optional[Recipe]:
         from_epub = epub_section is not None
         text = HTMLParser.extract_text(section_soup)
-        if from_epub and len(text) < 100:
+        if from_epub and len(text) < 100 and not section_soup.select_one("[data-recipe-component]"):
             return None
 
         if not self.validator.is_valid_recipe(section_soup, text, title):

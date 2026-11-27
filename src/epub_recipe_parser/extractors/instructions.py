@@ -51,6 +51,20 @@ class InstructionsExtractor:
     @staticmethod
     def extract(soup: BeautifulSoup, text: str) -> Optional[str]:
         """Extract instructions using multiple strategies."""
+        directions = soup.select('[data-recipe-component="instructions"]')
+        if directions:
+            steps = []
+            for direction in directions:
+                if direction.name == "ol":
+                    steps.extend(
+                        f"{i}. {step}"
+                        for i, step in enumerate(HTMLParser.extract_from_list(direction), 1)
+                    )
+                else:
+                    steps.append(direction.get_text(" ", strip=True))
+            if steps:
+                return "\n\n".join(steps)
+
         # Strategy 1: Find by CSS class (most reliable when present)
         instructions = InstructionsExtractor._extract_by_class(soup)
         if instructions and len(instructions) > 100:

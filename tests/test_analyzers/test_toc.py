@@ -200,7 +200,10 @@ class TestValidateExtraction:
         epub_file.write_text("valid epub")
 
         recipes = [
-            Recipe(title="Grilled Chicken", book="Test Book", author="Test Author"),
+            Recipe(
+                title="Grilled Chicken", book="Test Book", author="Test Author",
+                chapter="Poultry Recipes",
+            ),
             Recipe(title="Baked Salmon", book="Test Book", author="Test Author"),
         ]
 
@@ -212,8 +215,9 @@ class TestValidateExtraction:
         mock_item2.title = "Baked Salmon"
         mock_item2.href = "recipe2.xhtml"
 
+        mock_chapter = Mock(title="Poultry Recipes", href="poultry.xhtml")
         mock_book = Mock()
-        mock_book.toc = [mock_item1, mock_item2]
+        mock_book.toc = [mock_chapter, mock_item1, mock_item2]
 
         with patch("epub_recipe_parser.analyzers.toc.epub.read_epub", return_value=mock_book):
             report = analyzer.validate_extraction(recipes, epub_file)

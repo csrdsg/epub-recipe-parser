@@ -79,6 +79,11 @@ class RecipeValidator:
             if keyword in title_lower:
                 return False
 
+        if soup.select_one('[data-recipe-component="ingredients"]') and soup.select_one(
+            '[data-recipe-component="instructions"]'
+        ):
+            return True
+
         # Check for very short titles that are likely ingredients or components
         if RecipeValidator._is_likely_ingredient_title(title_stripped):
             return False

@@ -218,12 +218,15 @@ class TestValidateCommand:
 
         assert result.exit_code == 0
         assert "Validation Results" in result.output
-        assert "TOC entries: 10" in result.output
+        assert "Likely recipe entries in the TOC: 10" in result.output
         assert "Recipes extracted: 8" in result.output
-        assert "Coverage: 70.0%" in result.output
+        assert "TOC match rate: 70.0%" in result.output
 
     def test_validate_with_missing_recipes(self, runner, tmp_path, mock_recipes):
         """Test validation with missing recipes."""
+        mock_recipes[0].title = "Untitled"
+        mock_recipes[0].chapter = None
+        mock_recipes[0].instructions = None
         epub_file = tmp_path / "test.epub"
         db_file = tmp_path / "recipes.db"
         epub_file.write_text("dummy epub")
@@ -250,7 +253,10 @@ class TestValidateCommand:
                 result = runner.invoke(cli, ["validate", str(epub_file), str(db_file)])
 
         assert result.exit_code == 0
-        assert "Missing 15 recipes" in result.output
+        assert "Unmatched TOC entries: 15" in result.output
+        assert "Missing chapter: 1" in result.output
+        assert "Missing title: 1" in result.output
+        assert "Missing instructions: 1" in result.output
         assert "and 5 more" in result.output  # Should truncate at 10
 
 

@@ -87,6 +87,9 @@ class TOCAnalyzer:
         exclude_patterns = [
             r"^chapter\s+\d+",
             r"^part\s+\d+",
+            r"^conversion tables?$",
+            r"^(?:photo|illustration|photo/illustration) credits$",
+            r"^also by\b",
         ]
 
         for pattern in exclude_patterns:
@@ -170,6 +173,15 @@ class TOCAnalyzer:
         """Validate extraction against TOC."""
         epub_path = Path(epub_path)
         toc_recipes = self.extract_toc_recipes(epub_path)
+        chapter_titles = {
+            " ".join(recipe.chapter.casefold().split()) for recipe in recipes if recipe.chapter
+        }
+        recipe_titles = {" ".join(recipe.title.casefold().split()) for recipe in recipes}
+        chapter_only_titles = chapter_titles - recipe_titles
+        toc_recipes = [
+            entry for entry in toc_recipes
+            if " ".join(entry.title.casefold().split()) not in chapter_only_titles
+        ]
 
         if not toc_recipes:
             return ValidationReport(

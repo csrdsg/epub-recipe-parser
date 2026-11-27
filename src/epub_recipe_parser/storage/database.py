@@ -49,7 +49,7 @@ class RecipeDatabase:
     def init_database(self):
         """Initialize SQLite database schema in a thread-safe manner.
 
-        Uses file locking to prevent race conditions during concurrent
+        Uses a SQLite write transaction to prevent races during concurrent
         database initialization. Includes schema versioning for future migrations.
 
         Raises:
@@ -57,6 +57,7 @@ class RecipeDatabase:
         """
         with self._init_lock:
             with self._get_connection() as conn:
+                conn.execute("BEGIN IMMEDIATE")
                 cursor = conn.cursor()
 
                 # Schema Version 1: Initial schema with tagging support
@@ -201,6 +202,10 @@ class RecipeDatabase:
         if current_version < 2:
             cursor.execute("ALTER TABLE recipes ADD COLUMN metadata TEXT")
             self._set_schema_version(cursor, 2, "Added metadata column for JSON data")
+        if current_version < 3:
+            cursor.execute("ALTER TABLE recipes ADD COLUMN source_id TEXT")
+            cursor.execute("CREATE UNIQUE INDEX idx_recipes_source_id ON recipes(source_id)")
+            self._set_schema_version(cursor, 3, "Added unique EPUB recipe source identifiers")
 
     def save_recipes(self, recipes: List[Recipe]) -> int:
         """Save recipes to database with proper error handling and tag support.
@@ -223,6 +228,29 @@ class RecipeDatabase:
 
             for recipe in recipes:
                 try:
+                    if recipe.source_id is not None:
+                        # Adopt an unchanged extraction from an older database.
+                        adopted = cursor.execute(
+                            """
+                            UPDATE recipes SET source_id = ?
+                            WHERE id = (
+                                SELECT id FROM recipes
+                                WHERE source_id IS NULL AND book = ? AND author IS ?
+                                    AND epub_section IS ? AND title = ?
+                                    AND ingredients IS ? AND instructions IS ?
+                                ORDER BY id LIMIT 1
+                            )
+                            AND NOT EXISTS (SELECT 1 FROM recipes WHERE source_id = ?)
+                            """,
+                            (
+                                recipe.source_id, recipe.book, recipe.author, recipe.epub_section,
+                                recipe.title, recipe.ingredients, recipe.instructions,
+                                recipe.source_id,
+                            ),
+                        )
+                        if adopted.rowcount:
+                            continue
+
                     # Serialize metadata to JSON
                     metadata_json = json.dumps(recipe.metadata) if recipe.metadata else None
 
@@ -234,8 +262,9 @@ class RecipeDatabase:
                             serves, prep_time, cook_time,
                             ingredients, instructions, notes,
                             cooking_method, protein_type,
-                            raw_content, metadata
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            raw_content, metadata, source_id
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(source_id) DO NOTHING
                     """,
                         (
                             recipe.title,
@@ -253,9 +282,12 @@ class RecipeDatabase:
                             recipe.protein_type,
                             recipe.raw_content,
                             metadata_json,
+                            recipe.source_id,
                         ),
                     )
 
+                    if cursor.rowcount == 0:
+                        continue
                     recipe_id = cursor.lastrowid
 
                     # Save tags if present
@@ -371,6 +403,7 @@ class RecipeDatabase:
             protein_type=row["protein_type"],
             raw_content=row["raw_content"],
             metadata=recipe_metadata,
+            source_id=row["source_id"],
         )
 
     def query(

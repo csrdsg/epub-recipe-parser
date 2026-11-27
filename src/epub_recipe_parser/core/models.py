@@ -39,6 +39,7 @@ class Recipe:
     protein_type: Optional[str] = None
     raw_content: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+    source_id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert recipe to dictionary."""
@@ -59,6 +60,7 @@ class Recipe:
             "protein_type": self.protein_type,
             "raw_content": self.raw_content,
             "metadata": self.metadata,
+            "source_id": self.source_id,
         }
 
 

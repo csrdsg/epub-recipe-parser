@@ -99,6 +99,18 @@ class IngredientsExtractor:
             - linguistic_score: Linguistic quality score (0.0-1.0)
             - combined_score: Weighted combination score
         """
+        marked = soup.select('[data-recipe-component="ingredients"]')
+        if marked:
+            items = []
+            for element in marked:
+                if element.name == "ul":
+                    items.extend(HTMLParser.extract_from_list(element))
+                else:
+                    items.append(element.get_text(" ", strip=True))
+            if items:
+                result = "\n".join(f"- {item}" for item in items)
+                return (result, {"strategy": "explicit_structure"}) if use_patterns else result
+
         if use_patterns:
             try:
                 # Use pattern-based extraction

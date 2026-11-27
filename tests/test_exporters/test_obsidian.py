@@ -218,3 +218,39 @@ class TestObsidianVaultExporter:
         assert exporter._escape_yaml('Test "Quote"') == 'Test \\"Quote\\"'
         assert exporter._escape_yaml("Normal Text") == "Normal Text"
         assert exporter._escape_yaml("") == ""
+
+
+def test_append_preserves_notes_and_builds_cumulative_index(tmp_path):
+    vault = tmp_path / "vault"
+    exporter = ObsidianVaultExporter()
+    first = Recipe(title="Tomato Salad", book="Book One", source_id="source-one")
+    second = Recipe(title="Tomato Salad", book="Book Two", source_id="source-two")
+    assert exporter.export_vault([first], vault, organize_by="flat")["success"] == 1
+    original = vault / "Tomato-Salad.md"
+    edited = original.read_text().replace('source_id: "source-one"', "source_id: source-one")
+    edited += "\nA personal note.\n"
+    original.write_text(edited)
+
+    result = exporter.export_vault([first, second], vault, organize_by="flat", append=True)
+    assert result["success"] == 1
+    assert exporter.export_vault([second], vault, organize_by="flat", append=True)["success"] == 0
+    assert original.read_text() == edited
+    assert len(list(vault.glob("*.md"))) == 3
+    index = (vault / "README.md").read_text()
+    assert "**Total Recipes:** 2" in index
+    assert "**Book One:** 1 recipes" in index
+    assert "**Book Two:** 1 recipes" in index
+
+
+def test_append_preserves_a_custom_readme_and_counts_legacy_notes(tmp_path):
+    exporter = ObsidianVaultExporter()
+    old = Recipe(title="Old Recipe", book="Old Book")
+    new = Recipe(title="New Recipe", book="New Book", source_id="new-source")
+    exporter.export_vault([old], tmp_path)
+    readme = tmp_path / "README.md"
+    readme.write_text("# My vault\n")
+
+    exporter.export_vault([new], tmp_path, append=True)
+
+    assert readme.read_text() == "# My vault\n"
+    assert "**Total Recipes:** 2" in (tmp_path / "Recipe Vault Index.md").read_text()

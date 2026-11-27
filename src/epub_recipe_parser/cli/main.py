@@ -236,28 +236,42 @@ def analyze(epub_file: str, verbose: bool):
 @cli.command()
 @click.argument("epub_file", type=click.Path(exists=True))
 @click.argument("database", type=click.Path(exists=True))
-def validate(epub_file: str, database: str):
+@click.option("--book", help="Exact book title to validate in a multi-book database")
+def validate(epub_file: str, database: str, book: str | None):
     """Validate extraction against TOC."""
     console.print("\n[bold]✓ Validating extraction[/bold]\n")
 
     # Get extracted recipes from database
     db = RecipeDatabase(database)
 
-    # Query all recipes (we'll filter by book if needed)
-    all_recipes = db.query()
+    all_recipes = db.query(filters={"book": book}) if book else db.query()
+    if not book and len({recipe.book for recipe in all_recipes}) > 1:
+        raise click.UsageError("Use --book with the exact book title for a multi-book database.")
 
     # Validate
     toc_analyzer = TOCAnalyzer()
     report = toc_analyzer.validate_extraction(all_recipes, epub_file)
 
     console.print("[bold]📊 Validation Results:[/bold]")
-    console.print(f"  TOC entries: {report.toc_count}")
+    console.print(f"  Likely recipe entries in the TOC: {report.toc_count}")
     console.print(f"  Recipes extracted: {report.extracted_count}")
     console.print(f"  Matched: {report.matched}")
-    console.print(f"  Coverage: {report.coverage*100:.1f}%")
+    if report.toc_count:
+        console.print(f"  TOC match rate: {report.coverage*100:.1f}%")
+    console.print("  Tables of contents may list only chapters or omit recipes.")
+
+    diagnostics = (
+        ("Missing chapter", [r.title for r in all_recipes if r.chapter in (None, "", "Unknown")]),
+        ("Missing title", [r.epub_section or "HTML section" for r in all_recipes if
+                           r.title.strip().casefold() in ("", "untitled")]),
+        ("Missing instructions", [r.title for r in all_recipes if not (r.instructions or "").strip()]),
+    )
+    for label, entries in diagnostics:
+        preview = f" ({', '.join(entries[:3])})" if entries else ""
+        console.print(f"  {label}: {len(entries)}{preview}", markup=False)
 
     if report.missing:
-        console.print(f"\n[yellow]⚠️  Missing {len(report.missing)} recipes:[/yellow]")
+        console.print(f"\n[yellow]⚠️  Unmatched TOC entries: {len(report.missing)}[/yellow]")
         for entry in report.missing[:10]:
             console.print(f"  • {entry.title}")
         if len(report.missing) > 10:
@@ -398,14 +412,18 @@ def list_tags(database: str):
     help="Vault organization method (book, method, or flat) - only for vault format",
 )
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed export information")
+@click.option("--append", is_flag=True, help="Add to an Obsidian vault without replacing notes")
 def export(
     database: str,
     format: str,
     output: str | None,
     organize_by: str,
     verbose: bool,
+    append: bool,
 ):
     """Export recipes from database to various formats."""
+    if append and format != "vault":
+        raise click.UsageError("--append requires --format vault.")
     try:
         db = RecipeDatabase(database)
 
@@ -471,7 +489,9 @@ def export(
                 _export_markdown(recipes, output_path)
             elif format == "vault":
                 exporter = ObsidianVaultExporter()
-                stats = exporter.export_vault(recipes, output_path, organize_by=organize_by)
+                stats = exporter.export_vault(
+                    recipes, output_path, organize_by=organize_by, append=append
+                )
                 # Store stats for later display
                 vault_stats = stats
 
@@ -484,6 +504,10 @@ def export(
                 f"[green]✅ Successfully exported {vault_stats['success']} recipes[/green]"
             )
             console.print(f"[green]📁 Vault directory: {output}[/green]")
+            if append:
+                skipped = len(recipes) - vault_stats["success"] - vault_stats["failed"]
+                if skipped:
+                    console.print(f"Preserved {skipped} existing recipe notes.")
             if vault_stats["failed"] > 0:
                 console.print(
                     f"[yellow]⚠️  Failed to export {vault_stats['failed']} recipes[/yellow]"
