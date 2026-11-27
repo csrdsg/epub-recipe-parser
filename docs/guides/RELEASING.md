@@ -6,9 +6,10 @@ such as `v4.0.0`.
 
 ## Verify a release candidate
 
-From the repository root, refresh the lockfile after changing the version or
-dependencies. Install the locked development dependencies and the pinned Knap
-runtime. Then run the tests and build the source distribution and wheel.
+From the repository root, use uv 0.13.10 to match GitHub Actions. Refresh the
+lockfile after changing the version or dependencies. Install the locked
+development dependencies and the pinned Knap runtime. Then run the tests and
+build the source distribution and wheel.
 
 ```sh
 uv lock

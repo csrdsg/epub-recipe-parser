@@ -20,6 +20,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.13.10'
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -35,6 +37,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.13.10'
       - run: uv build --python 3.12
       - name: Verify the installed wheel
         shell: bash
