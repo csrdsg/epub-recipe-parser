@@ -735,7 +735,7 @@ def _export_markdown(recipes: list, output_path: Path) -> None:
                 f.write(recipe.notes)
                 f.write("\n\n")
 
-            f.write("---\n\n")
+            f.write("---\n" if i == len(recipes) else "---\n\n")
 
 
 if __name__ == "__main__":

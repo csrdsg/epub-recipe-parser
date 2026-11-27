@@ -18,6 +18,8 @@ uv run epub-parser extract --help
 
 Replace `cookbook.epub` in the examples with your EPUB path. Quote paths that
 contain spaces.
+Use the [sample cookbook](../../examples/sample-cookbook/README.md) to try the
+workflow with an original two-recipe EPUB and compare the exports.
 
 ## Extract and review one cookbook
 
@@ -44,6 +46,12 @@ The parser uses HTML sections and headings to find recipes, then looks for
 ingredients, directions, and metadata. Chapter names come from the EPUB table of
 contents where the entries can be mapped to the recipe. Missing optional fields
 such as serving size and cook time are common in source EPUBs.
+
+When the directions give a duration for an action such as baking, resting, or
+marinating, the JSON export records it under `metadata.timing.steps`. Each
+entry contains the action, its kind, and minimum and maximum minutes. A range
+such as 20–25 minutes retains both endpoints. The recipe-level `cook_time`
+field continues to represent a labeled duration from the source.
 
 ## Build a collection from several EPUBs
 

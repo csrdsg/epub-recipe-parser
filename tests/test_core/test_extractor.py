@@ -443,3 +443,15 @@ def test_recipe_headings_split_chapter_and_preserve_components(
     assert database.save_recipes(rows) == 2
     assert database.save_recipes(EPUBRecipeExtractor().extract_from_epub(path)) == 0
     assert database.count() == 2
+
+
+def test_sample_cookbook_matches_json_export():
+    import json
+    from pathlib import Path
+
+    sample_dir = Path(__file__).resolve().parents[2] / "examples" / "sample-cookbook"
+    recipes = EPUBRecipeExtractor().extract_from_epub(sample_dir / "sample.epub")
+    expected = json.loads((sample_dir / "recipes.json").read_text(encoding="utf-8"))
+
+    assert len(recipes) == 2
+    assert [recipe.to_dict() for recipe in recipes] == expected["recipes"]

@@ -3,10 +3,18 @@
 import re
 from bs4 import BeautifulSoup
 
+from epub_recipe_parser.core.patterns.ingredient_detectors import IngredientPatternDetector
 from epub_recipe_parser.utils.patterns import (
     COOKING_VERBS_PATTERN,
     MEASUREMENT_PATTERN,
     EXCLUDE_KEYWORDS,
+    SERVES_PATTERN,
+)
+
+_INGREDIENT_NOUN = re.compile(
+    r"\b(?:" + "|".join(re.escape(word) for word in sorted(IngredientPatternDetector.INGREDIENT_NOUNS))
+    + r")(?:e?s)?\b",
+    re.IGNORECASE,
 )
 
 
@@ -93,13 +101,18 @@ class RecipeValidator:
 
         # Count measurements
         measurements = MEASUREMENT_PATTERN.findall(text_lower)
+        has_ingredient_evidence = (
+            len(measurements) >= 2
+            or bool(measurements and SERVES_PATTERN.search(text_lower))
+            or RecipeValidator._has_ingredient_structure(soup, text_lower)
+        )
+        if not has_ingredient_evidence:
+            return False
 
         # Calculate score
-        score = 0
+        score = 2  # Ingredient evidence
         if len(cooking_verbs) >= 3:
             score += 3
-        if len(measurements) >= 2:
-            score += 2
         if re.search(r"\b(?:ingredient|what you need)\b", text_lower):
             score += 2
         if re.search(r"\b(?:instruction|direction|method|steps?)\b", text_lower):
@@ -108,6 +121,26 @@ class RecipeValidator:
             score += 1
 
         return score >= 5
+
+    @staticmethod
+    def _has_ingredient_structure(soup: BeautifulSoup, text: str) -> bool:
+        if soup.select_one('.ingredients, .ingredient, .ing, [itemprop="recipeIngredient"]'):
+            return True
+        if re.search(r"^\s*ingredients\s*:?\s*$", text, re.MULTILINE):
+            return True
+        for ingredients in soup.find_all("ul"):
+            food_items = 0
+            for item in ingredients.find_all("li", recursive=False):
+                line = item.get_text(" ", strip=True)
+                if (
+                    len(line.split()) <= 9
+                    and _INGREDIENT_NOUN.search(line)
+                    and not COOKING_VERBS_PATTERN.match(line)
+                ):
+                    food_items += 1
+            if food_items >= 2:
+                return True
+        return False
 
     @staticmethod
     def _is_sub_section(title: str) -> bool:

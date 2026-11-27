@@ -77,3 +77,42 @@ def test_calculate_confidence_both_present_bonus():
     confidence = RecipeValidator.calculate_confidence(text, ingredients, instructions)
     # Should include the 0.2 bonus for both being present
     assert confidence >= 0.6
+
+
+def test_code_heavy_prose_requires_ingredient_evidence():
+    prose = """
+    <p>Prepare the input, add a value, and combine the two elements. This
+    instruction describes how to format and display each ingredient in a list
+    while preserving the string representation of the original object.</p>
+    <pre class="programlisting">print(format(value))</pre>
+    """
+    technical = BeautifulSoup(prose, "html.parser")
+    assert not RecipeValidator.is_valid_recipe(
+        technical, technical.get_text(" "), "Formatting a String"
+    )
+
+    with_ingredients = BeautifulSoup(
+        prose + '<ul class="ingredients"><li>Salt to taste</li></ul>', "html.parser"
+    )
+    assert RecipeValidator.is_valid_recipe(
+        with_ingredients, with_ingredients.get_text(" "), "Seasoning"
+    )
+
+
+def test_one_incidental_measurement_does_not_make_travel_prose_a_recipe():
+    soup = BeautifulSoup(
+        "<p>Watch the harbor, take the ferry, and continue along the coast. "
+        "The statue has 11 heads. The route instruction explains how to add "
+        "a side trip before you return.</p>",
+        "html.parser",
+    )
+    assert not RecipeValidator.is_valid_recipe(soup, soup.get_text(), "Plan Your Time")
+
+
+def test_unmeasured_ingredient_list_is_recipe_evidence():
+    soup = BeautifulSoup(
+        "<ul><li>Fresh tomatoes</li><li>Salt to taste</li></ul>"
+        "<p>Slice the tomatoes, toss with salt, and serve immediately.</p>",
+        "html.parser",
+    )
+    assert RecipeValidator.is_valid_recipe(soup, soup.get_text(" "), "Salted Tomatoes")

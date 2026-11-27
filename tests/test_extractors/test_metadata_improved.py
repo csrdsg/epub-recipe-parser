@@ -289,3 +289,28 @@ class TestBackwardCompatibility:
         metadata = MetadataExtractor.extract(soup, text, title="Beef Steak")
         assert "protein_type" in metadata
         assert metadata["protein_type"] == "beef"
+
+
+def test_narrative_times_keep_actions_and_ranges_separate():
+    instructions = """
+    Marinate the tofu for 1 hour and 15 minutes. Bake at 400°F
+    for 20–25 minutes. Cool 10 min before slicing.
+
+    Cook until golden, then rest for 5 minutes. Do not grill for 30 minutes.
+    Fry until sizzling, browned, and crisp on the bottom, 2 to 4 minutes.
+    """
+    assert MetadataExtractor.extract_step_times(instructions) == [
+        {"action": "marinate", "kind": "marinate", "min_minutes": 75, "max_minutes": 75},
+        {"action": "bake", "kind": "cook", "min_minutes": 20, "max_minutes": 25},
+        {"action": "cool", "kind": "rest", "min_minutes": 10, "max_minutes": 10},
+        {"action": "rest", "kind": "rest", "min_minutes": 5, "max_minutes": 5},
+        {"action": "fry", "kind": "cook", "min_minutes": 2, "max_minutes": 4},
+    ]
+
+
+def test_unlabeled_cooking_duration_is_not_a_recipe_total():
+    soup = BeautifulSoup("<p>Cook 30-40 minutes</p>", "html.parser")
+    assert "cook_time" not in MetadataExtractor.extract(soup, soup.get_text())
+    assert MetadataExtractor.extract_step_times(soup.get_text()) == [
+        {"action": "cook", "kind": "cook", "min_minutes": 30, "max_minutes": 40},
+    ]

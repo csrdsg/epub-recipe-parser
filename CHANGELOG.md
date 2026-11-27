@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Require ingredient evidence to reduce false positives in non-cookbook EPUBs,
+  including technical books and travel guides.
+- Extract stated step durations from instructions, including cooking, resting,
+  marinating, and ranges, in `recipe.metadata["timing"]["steps"]`.
+- Include an original two-recipe sample EPUB with Markdown, JSON, and SQLite exports.
 - Recognize recipe headings and ingredient and instruction blocks used in
   *Project Griddle* and *Asada*.
 - Recover chapters for EPUBs split into multiple numbered files and report missing

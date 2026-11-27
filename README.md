@@ -22,6 +22,8 @@ Use `batch` to process a directory, `analyze` to inspect a book, and `validate`
 to compare extracted recipes against a book's table of contents. Run
 `uv run epub-parser --help` for the full command list.
 See the [user manual](docs/guides/USER_MANUAL.md) for examples of each workflow.
+Try the [sample cookbook](examples/sample-cookbook/README.md) for a small EPUB
+with matching Markdown, JSON, and SQLite output.
 
 ## Python API
 

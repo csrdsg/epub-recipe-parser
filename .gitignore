@@ -60,8 +60,11 @@ site/
 
 # Project specific
 test_output/
+/sample-results/
 /*-cookbook-results.*/
 *.epub
+!/examples/sample-cookbook/sample.epub
+!/examples/sample-cookbook/recipes.db
 books/
 recipes/
 node_modules/

@@ -12,6 +12,28 @@ from epub_recipe_parser.utils.patterns import (
     PROTEIN_TYPES,
 )
 
+_RESTING_ACTIONS = {"rest", "cool", "chill", "refrigerate"}
+_MARINATING_ACTIONS = {"marinate", "brine", "soak"}
+_COOKING_ACTIONS = {
+    "bake", "boil", "broil", "cook", "fry", "grill", "roast", "sauté",
+    "simmer", "smoke", "steam", "toast",
+}
+_TIMED_ACTIONS = "|".join(sorted(_RESTING_ACTIONS | _MARINATING_ACTIONS | _COOKING_ACTIONS))
+_ACTION_ARGUMENT = rf"(?:(?!\b(?:and|then|until|while|before|after|{_TIMED_ACTIONS})\b)[^.;!?\n])"
+_DONENESS_CLAUSE = rf"(?:(?!\b(?:then|while|before|after|{_TIMED_ACTIONS})\b)[^.;!?\n])"
+_DURATION_NUMBER = r"\d{1,4}(?:\.\d{1,2})?"
+_TIMED_STEP = re.compile(
+    rf"(?<!\bnot )\b(?P<action>{_TIMED_ACTIONS})\s+"
+    rf"(?:(?:{_ACTION_ARGUMENT}{{1,80}}?\b)?"
+    rf"(?:for\s+|until\s+{_DONENESS_CLAUSE}{{1,100}}?,\s+))?"
+    r"(?:(?:about|approximately|another)\s+)?"
+    rf"(?P<start>{_DURATION_NUMBER})"
+    rf"(?:\s*(?:[-–—]|to)\s*(?P<end>{_DURATION_NUMBER}))?\s*"
+    r"(?P<unit>hours?|hrs?|minutes?|mins?)\b"
+    r"(?:\.?\s+(?:and\s+)?(?P<extra_minutes>\d{1,2})\s*(?:minutes?|mins?)\b)?",
+    re.IGNORECASE,
+)
+
 
 class MetadataExtractor:
     """Extract recipe metadata with improved parsing and validation."""
@@ -69,6 +91,41 @@ class MetadataExtractor:
                 break
 
         return metadata
+
+    @staticmethod
+    def extract_step_times(instructions: str) -> list[dict[str, str | int]]:
+        """Extract durations tied to individual actions in the instructions."""
+        steps = []
+        paragraphs = re.split(r"\n\s*\n", instructions)
+        matches = (
+            match
+            for paragraph in paragraphs
+            for match in _TIMED_STEP.finditer(" ".join(paragraph.split()))
+        )
+        for match in matches:
+            action = match["action"].casefold()
+            unit = match["unit"].casefold()
+            hours = unit.startswith("h")
+            if match["extra_minutes"] and not hours:
+                continue
+            factor = 60 if hours else 1
+            extra = int(match["extra_minutes"] or 0)
+            minimum = round(float(match["start"]) * factor) + extra
+            maximum = round(float(match["end"] or match["start"]) * factor) + extra
+            if not 0 < minimum <= maximum:
+                continue
+            kind = "cook"
+            if action in _RESTING_ACTIONS:
+                kind = "rest"
+            elif action in _MARINATING_ACTIONS:
+                kind = "marinate"
+            steps.append({
+                "action": action,
+                "kind": kind,
+                "min_minutes": minimum,
+                "max_minutes": maximum,
+            })
+        return steps
 
     @staticmethod
     def parse_servings(raw_value: str) -> Optional[str]:

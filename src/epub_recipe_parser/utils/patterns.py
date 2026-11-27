@@ -46,7 +46,9 @@ PREP_TIME_PATTERN = re.compile(
 
 # Pre-compiled for performance optimization
 COOK_TIME_PATTERN = re.compile(
-    r"(?:cook(?:ing)?|passive|baking)(?:\s*time)?[:\s]+([^.\n]+?)(?=\n|prep|$)", re.IGNORECASE
+    r"\b(?:cook(?:ing)?|passive|baking)(?:\s+time\b\s*:?|\s*:)\s*"
+    r"([^.\n]+?)(?=[.\n]|\bprep|$)",
+    re.IGNORECASE,
 )
 
 # Ingredient section keywords

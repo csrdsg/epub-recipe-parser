@@ -1,0 +1,90 @@
+{
+  "metadata": {
+    "count": 2,
+    "format_version": "1.0"
+  },
+  "recipes": [
+    {
+      "title": "Roasted Carrots with Lemon",
+      "book": "Small Kitchen Cookbook",
+      "author": "EPUB Recipe Parser Contributors",
+      "chapter": "Vegetable Sides",
+      "epub_section": "sides.xhtml",
+      "ingredients": "- 4 carrots, sliced lengthwise\n- 1 tablespoon olive oil\n- 1 teaspoon lemon juice\n- Salt to taste",
+      "instructions": "1. Toss the carrots with the oil and salt and arrange them on a sheet pan.\n\n2. Roast at 425°F for 20–25 minutes, turning once.\n\n3. Drizzle with lemon juice before serving.",
+      "serves": "2",
+      "prep_time": "10",
+      "cook_time": null,
+      "notes": null,
+      "tags": [],
+      "cooking_method": "roast",
+      "protein_type": null,
+      "raw_content": "Roasted Carrots with Lemon\nServes 2\nPrep time: 10 minutes\n4 carrots, sliced lengthwise\n1 tablespoon olive oil\n1 teaspoon lemon juice\nSalt to taste\nToss the carrots with the oil and salt and arrange them on a sheet pan.\nRoast at 425°F for 20–25 minutes, turning once.\nDrizzle with lemon juice before serving.",
+      "metadata": {
+        "extraction": {
+          "ingredients": {
+            "strategy": "explicit_structure"
+          }
+        },
+        "timing": {
+          "steps": [
+            {
+              "action": "roast",
+              "kind": "cook",
+              "min_minutes": 20,
+              "max_minutes": 25
+            }
+          ]
+        }
+      },
+      "source_id": "980ba53e51f12d1edcfca358f03f12773a6de524a0fa9172b9f2271be0dab042"
+    },
+    {
+      "title": "Ginger Tofu",
+      "book": "Small Kitchen Cookbook",
+      "author": "EPUB Recipe Parser Contributors",
+      "chapter": "Weeknight Mains",
+      "epub_section": "mains.xhtml",
+      "ingredients": "- 1 pound firm tofu, cut into cubes\n- 2 tablespoons soy sauce\n- 1 tablespoon grated ginger\n- 1 tablespoon neutral oil",
+      "instructions": "Combine the tofu, soy sauce, ginger, and oil in a bowl.\n      Marinate for 30 minutes.\n\nSpread the cubes on a sheet pan and bake at 400°F\n      for 25 minutes. Let the tofu rest for 5 minutes before serving.",
+      "serves": "2",
+      "prep_time": null,
+      "cook_time": null,
+      "notes": null,
+      "tags": [],
+      "cooking_method": "bake",
+      "protein_type": null,
+      "raw_content": "Ginger Tofu\nServes 2\n1 pound firm tofu, cut into cubes\n2 tablespoons soy sauce\n1 tablespoon grated ginger\n1 tablespoon neutral oil\nCombine the tofu, soy sauce, ginger, and oil in a bowl.\nMarinate for 30 minutes.\nSpread the cubes on a sheet pan and bake at 400°F\nfor 25 minutes. Let the tofu rest for 5 minutes before serving.",
+      "metadata": {
+        "extraction": {
+          "ingredients": {
+            "strategy": "explicit_structure"
+          }
+        },
+        "timing": {
+          "steps": [
+            {
+              "action": "marinate",
+              "kind": "marinate",
+              "min_minutes": 30,
+              "max_minutes": 30
+            },
+            {
+              "action": "bake",
+              "kind": "cook",
+              "min_minutes": 25,
+              "max_minutes": 25
+            },
+            {
+              "action": "rest",
+              "kind": "rest",
+              "min_minutes": 5,
+              "max_minutes": 5
+            }
+          ]
+        }
+      },
+      "source_id": "38eb42b3cc2ba8bfa1bb4c3993e6635c342e627bb2064b10b4afd2df56b8f9ce"
+    }
+  ]
+}

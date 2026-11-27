@@ -367,6 +367,10 @@ class EPUBRecipeExtractor:
         if ingredients_metadata:
             merge_extraction_metadata(recipe.metadata, ingredients_metadata, "ingredients")
 
+        step_times = MetadataExtractor.extract_step_times(instructions or "")
+        if step_times:
+            recipe.metadata["timing"] = {"steps": step_times}
+
         if ab_metadata:
             recipe.metadata["ab_test"] = ab_metadata
 
