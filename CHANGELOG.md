@@ -5,7 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.1.0]
+
+- Import an EPUB directly into Obsidian with `import-vault`. Repeat imports
+  preserve existing notes and skip recipes with a matching source identifier.
+- Existing SQLite collections migrate on open to add a unique, optional
+  `source_id`. JSON exports expose this identifier and any stated step
+  durations under `metadata.timing.steps`.
 
 - Infer recipe boundaries and components from semantic markup, document headings,
   and repeated sibling layouts. Use the EPUB spine and table of contents to

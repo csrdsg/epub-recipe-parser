@@ -30,6 +30,12 @@ jobs:
       - run: uv sync --locked --extra dev --python ${{ matrix.python-version }}
       - run: npm ci --prefix src/epub_recipe_parser/structured/runtime
       - run: uv run --locked --extra dev --python ${{ matrix.python-version }} pytest -q
+      - if: matrix.python-version == '3.12'
+        run: uv run --locked --extra dev ruff check src/
+      - if: matrix.python-version == '3.12'
+        run: |
+          uv run --locked --extra dev pytest --cov=epub_recipe_parser --cov-report=term-missing > coverage.txt
+          cat coverage.txt >> "$GITHUB_STEP_SUMMARY"
 
   distributions:
     needs: tests
@@ -49,6 +55,20 @@ jobs:
           if [[ "$GITHUB_REF_TYPE" == tag ]]; then
             [[ "$version" == *"version ${GITHUB_REF_NAME#v}" ]]
           fi
+          sample=$(realpath examples/sample-cookbook/sample.epub)
+          cd "$(mktemp -d)"
+          parser() {
+            uv run --isolated --no-project --python 3.12 --with "$wheel" epub-parser "$@"
+          }
+          parser extract "$sample" -o recipes.db
+          parser export recipes.db -f json -o recipes.json
+          grep -q '"count": 2' recipes.json
+          parser import-vault "$sample" vault
+          note=vault/Small-Kitchen-Cookbook/Ginger-Tofu.md
+          printf '\nPersonal edit.\n' >> "$note"
+          parser import-vault "$sample" vault | grep -q 'Preserved 2 existing recipe notes'
+          grep -q 'Personal edit.' "$note"
+          test "$(find vault -name '*.md' | wc -l)" -eq 3
       - uses: actions/upload-artifact@v4
         with:
           name: python-distributions
