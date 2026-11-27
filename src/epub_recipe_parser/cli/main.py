@@ -29,6 +29,38 @@ def cli():
 cli.add_command(structure_command)
 
 
+@cli.command("import-vault")
+@click.argument("epub_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.argument("vault_directory", type=click.Path(file_okay=False, path_type=Path))
+@click.option(
+    "--organize-by",
+    type=click.Choice(["book", "method", "flat"], case_sensitive=False),
+    default="book",
+    show_default=True,
+    help="Folder layout for new notes.",
+)
+def import_vault(epub_file: Path, vault_directory: Path, organize_by: str):
+    """Extract an EPUB directly into an Obsidian vault."""
+    try:
+        recipes = EPUBRecipeExtractor().extract_from_epub(epub_file)
+        if not recipes:
+            click.echo("No recipes found.")
+            return
+
+        stats = ObsidianVaultExporter().export_vault(
+            recipes, vault_directory, organize_by=organize_by, append=True
+        )
+    except (OSError, ValueError) as error:
+        raise click.ClickException(str(error)) from error
+
+    click.echo(f"Added {stats['success']} recipe notes to {vault_directory}.")
+    preserved = stats["total"] - stats["success"] - stats["failed"]
+    if preserved:
+        click.echo(f"Preserved {preserved} existing recipe notes.")
+    if stats["failed"]:
+        raise click.ClickException(f"Failed to write {stats['failed']} recipe notes.")
+
+
 @cli.command()
 @click.argument("epub_file", type=click.Path(exists=True))
 @click.option("--output", "-o", default="recipes.db", help="Output database file")

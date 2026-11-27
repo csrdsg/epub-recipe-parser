@@ -94,6 +94,19 @@ use the Python API example below.
 
 ## Export to Obsidian
 
+Import an EPUB directly into a new or existing vault.
+
+```sh
+uv run epub-parser import-vault "cookbook.epub" "/path/to/Obsidian Vault"
+```
+
+The command writes Markdown notes directly to the vault and updates its
+recipe index. Imports preserve existing notes and skip recipes already
+identified by their `source_id`. Use `--organize-by method` or
+`--organize-by flat` to change where new notes go.
+
+To export from a SQLite collection, use `export`.
+
 ```sh
 uv run epub-parser export collection.db -f vault --organize-by book -o cookbook-vault
 ```

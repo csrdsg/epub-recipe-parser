@@ -452,3 +452,26 @@ class TestExportHelpers:
         content = output_file.read_text()
         assert "### Notes" in content
         assert "These are test notes." in content
+
+
+def test_import_vault_directly_preserves_edited_notes(runner, tmp_path):
+    from pathlib import Path
+
+    sample = Path(__file__).resolve().parents[2] / "examples" / "sample-cookbook" / "sample.epub"
+    vault = tmp_path / "Existing Vault"
+    args = ["import-vault", str(sample), str(vault)]
+
+    first = runner.invoke(cli, args)
+    assert first.exit_code == 0, first.output
+    assert "Added 2 recipe notes" in first.output
+    note = next(vault.glob("*/Ginger-Tofu.md"))
+    edited = note.read_text(encoding="utf-8") + "\nPersonal note.\n"
+    note.write_text(edited, encoding="utf-8")
+
+    second = runner.invoke(cli, args)
+    assert second.exit_code == 0, second.output
+    assert "Preserved 2 existing recipe notes" in second.output
+    assert note.read_text(encoding="utf-8") == edited
+    assert len(list(vault.glob("*/*.md"))) == 2
+    assert "**Total Recipes:** 2" in (vault / "README.md").read_text(encoding="utf-8")
+    assert not list(tmp_path.rglob("*.db"))

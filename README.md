@@ -25,6 +25,48 @@ See the [user manual](docs/guides/USER_MANUAL.md) for examples of each workflow.
 Try the [sample cookbook](examples/sample-cookbook/README.md) for a small EPUB
 with matching Markdown, JSON, and SQLite output.
 
+## Use with Obsidian
+
+Import a cookbook EPUB directly into a new or existing Obsidian vault.
+The command writes Markdown notes without creating a SQLite database.
+
+```sh
+uv run epub-parser import-vault "cookbook.epub" "./cookbook-vault"
+```
+
+Open the folder as a vault in Obsidian and start with `README.md` for the
+generated cookbook index. Each recipe has its own
+Markdown note with ingredients, instructions, and properties such as the source
+book, tags, and cooking method when available. Search for an ingredient, browse
+by tag, or follow recipe references that resolve to other notes in the vault.
+For meal planning, create a weekly menu note and link to dishes with
+`[[Recipe note name]]`.
+
+The default layout groups notes by cookbook. Use `--organize-by method` to
+group by cooking method or `--organize-by flat` to keep notes in one directory.
+
+### Add recipes to an existing vault
+
+Point `import-vault` at the existing vault folder. It preserves notes and
+edits and skips recipes it has already imported.
+
+```sh
+uv run epub-parser import-vault "another-cookbook.epub" "/path/to/your vault"
+```
+
+Keep the `source_id` property when editing imported recipes so future imports
+can skip them. The generated index includes both books. If your vault already
+has its own `README.md`, the exporter uses `Recipe Vault Index.md` when available.
+
+### Export recipes from SQLite
+
+If you already have a recipe database, use `export --append` to add its
+recipes to an existing vault.
+
+```sh
+uv run epub-parser export recipes.db --format vault --append --output "/path/to/your vault"
+```
+
 ## Python API
 
 ```python
